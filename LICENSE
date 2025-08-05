@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2025 CPRA Processor Demo Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+ADDITIONAL DISCLAIMER FOR GOVERNMENT USE:
+
+This software is provided as a demonstration and educational tool. While it
+showcases potential capabilities for processing public records requests, any
+production use should be thoroughly tested and validated to ensure compliance
+with applicable laws and regulations, including but not limited to:
+
+- California Public Records Act (CPRA)
+- Local government transparency requirements
+- Data privacy and security regulations
+- Records retention policies
+
+Users are strongly advised to consult with legal counsel before implementing
+this software in any official capacity. The authors and contributors make no
+representations about the suitability of this software for any particular
+government use case.

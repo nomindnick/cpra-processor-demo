@@ -1,6 +1,29 @@
 """
 CPRA Analysis Engine for responsiveness determination.
-Orchestrates AI-driven analysis of emails against CPRA requests.
+
+This module orchestrates AI-driven analysis of emails against CPRA requests,
+providing intelligent document classification for public records processing.
+It implements a two-pass analysis system: first determining responsiveness
+to CPRA requests, then identifying potential exemptions.
+
+Key Features:
+    - Semantic understanding of document content (not just keyword matching)
+    - Confidence scoring for all determinations
+    - Batch processing capabilities with progress tracking
+    - Comprehensive error handling and retry logic
+    - Support for multiple AI models through Ollama
+
+Typical Usage:
+    analyzer = CPRAAnalyzer(model_name="gemma3:latest")
+    
+    # Analyze single email
+    result = analyzer.analyze_email_responsiveness(email, cpra_requests)
+    
+    # Batch processing
+    results = analyzer.analyze_batch_responsiveness(emails, cpra_requests)
+    
+    # Check for exemptions
+    exemptions = analyzer.analyze_email_exemptions(email)
 """
 
 import time
@@ -24,11 +47,21 @@ class CPRAAnalyzer:
     
     def __init__(self, model_name: str = "gemma3:latest", ollama_host: str = "http://localhost:11434"):
         """
-        Initialize the CPRA analyzer.
+        Initialize the CPRA analyzer with specified AI model.
+        
+        Creates connection to Ollama service and verifies model availability.
+        Raises exceptions if connectivity or model issues are detected.
         
         Args:
-            model_name: Ollama model to use for analysis
-            ollama_host: Ollama service host URL
+            model_name: Name of the Ollama model to use for analysis.
+                       Options: "gemma3:latest" (fast), "gpt-oss:20b" (quality),
+                       "phi4-mini-reasoning:3.8b" (reasoning)
+            ollama_host: URL of the Ollama service endpoint.
+                        Default is localhost on standard port.
+        
+        Raises:
+            ConnectionError: If Ollama service is not reachable
+            ValueError: If specified model is not available locally
         """
         self.model_name = model_name
         self.ollama_client = OllamaClient(host=ollama_host)
