@@ -2,106 +2,871 @@
 """
 CPRA Processing Application - Main Streamlit Application
 
-This is the main entry point for the CPRA processing demo application.
-Currently placeholder - will be implemented in Sprint 5.
+Sprint 5 Implementation: Core Streamlit Interface
+- File upload with drag-and-drop
+- CPRA request input forms
+- Results dashboard with document grouping
+- Document review interface
+- Navigation and state management
 """
 
 import streamlit as st
+import os
+import sys
+import json
+import time
+from pathlib import Path
+from datetime import datetime
+from typing import List, Dict, Optional, Any
+
+# Add src to path for imports
+sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+from src.parsers.email_parser import EmailParser
+from src.processors.cpra_analyzer import CPRAAnalyzer
+from src.processors.review_manager import ReviewManager
+from src.processors.session_manager import SessionManager
+from src.processors.export_manager import ExportManager
+from src.utils.data_structures import (
+    Email, ProcessingSession, ResponsivenessAnalysis,
+    ExemptionAnalysis, DocumentReview, ReviewDecision,
+    ReviewStatus
+)
+
+
+def init_session_state():
+    """Initialize Streamlit session state variables."""
+    if 'session' not in st.session_state:
+        st.session_state.session = None
+    if 'emails' not in st.session_state:
+        st.session_state.emails = []
+    if 'cpra_requests' not in st.session_state:
+        st.session_state.cpra_requests = []
+    if 'responsiveness_results' not in st.session_state:
+        st.session_state.responsiveness_results = []
+    if 'exemption_results' not in st.session_state:
+        st.session_state.exemption_results = []
+    if 'review_manager' not in st.session_state:
+        st.session_state.review_manager = None
+    if 'current_review_index' not in st.session_state:
+        st.session_state.current_review_index = 0
+    if 'processing_complete' not in st.session_state:
+        st.session_state.processing_complete = False
+    if 'review_complete' not in st.session_state:
+        st.session_state.review_complete = False
+    if 'page' not in st.session_state:
+        st.session_state.page = 'upload'
+    if 'export_manager' not in st.session_state:
+        st.session_state.export_manager = None
+
+
+def load_sample_data():
+    """Load sample data for demo purposes."""
+    sample_file_path = Path("data/sample_emails/test_emails.txt")
+    if sample_file_path.exists():
+        with open(sample_file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    return None
+
+
+def parse_emails(content: str) -> List[Email]:
+    """Parse email content into Email objects."""
+    parser = EmailParser()
+    emails = parser.parse_email_file(content)
+    return emails
+
+
+def sidebar_navigation():
+    """Create sidebar navigation."""
+    st.sidebar.title("🏛️ CPRA Processing")
+    st.sidebar.markdown("---")
+    
+    # Navigation menu
+    pages = {
+        'upload': '📤 Upload & Configure',
+        'processing': '⚙️ Processing',
+        'results': '📊 Results Dashboard',
+        'review': '👁️ Document Review',
+        'export': '📥 Export Documents'
+    }
+    
+    # Show navigation based on current state
+    for key, label in pages.items():
+        # Disable pages that aren't ready yet
+        disabled = False
+        if key == 'processing' and not st.session_state.emails:
+            disabled = True
+        elif key == 'results' and not st.session_state.processing_complete:
+            disabled = True
+        elif key == 'review' and not st.session_state.processing_complete:
+            disabled = True
+        elif key == 'export' and not st.session_state.review_complete:
+            disabled = True
+        
+        if st.sidebar.button(label, key=f"nav_{key}", disabled=disabled, use_container_width=True):
+            st.session_state.page = key
+    
+    # Session info
+    if st.session_state.session:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📋 Session Info")
+        st.sidebar.text(f"ID: {st.session_state.session.session_id[:8]}...")
+        st.sidebar.text(f"Emails: {len(st.session_state.emails)}")
+        st.sidebar.text(f"Requests: {len(st.session_state.cpra_requests)}")
+        
+        if st.session_state.processing_complete:
+            responsive_count = sum(1 for r in st.session_state.responsiveness_results if r and r.is_responsive)
+            st.sidebar.text(f"Responsive: {responsive_count}")
+            
+            if st.session_state.review_manager:
+                summary = st.session_state.review_manager.get_review_summary(st.session_state.session)
+                completed = summary['review_statuses']['completed']
+                total = summary['total_documents']
+                st.sidebar.text(f"Reviewed: {completed}/{total}")
+
+
+def upload_page():
+    """File upload and CPRA request input page."""
+    st.title("📤 Upload Documents & Configure Requests")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### 📧 Email Upload")
+        
+        # File uploader
+        uploaded_file = st.file_uploader(
+            "Choose an email export file",
+            type=['txt'],
+            help="Upload a text file containing emails in Outlook export format"
+        )
+        
+        # Sample data option
+        if st.button("📦 Load Sample Data", type="secondary"):
+            sample_content = load_sample_data()
+            if sample_content:
+                emails = parse_emails(sample_content)
+                st.session_state.emails = emails
+                st.success(f"✅ Loaded {len(emails)} sample emails")
+        
+        if uploaded_file is not None:
+            content = uploaded_file.read().decode('utf-8')
+            emails = parse_emails(content)
+            st.session_state.emails = emails
+            st.success(f"✅ Parsed {len(emails)} emails from uploaded file")
+        
+        # Display parsed emails
+        if st.session_state.emails:
+            st.markdown("### 📋 Parsed Emails")
+            with st.expander(f"View {len(st.session_state.emails)} emails"):
+                for i, email in enumerate(st.session_state.emails, 1):
+                    st.markdown(f"**{i}.** {email.subject or '(No subject)'}")
+                    st.caption(f"From: {email.sender} | Date: {email.date}")
+    
+    with col2:
+        st.markdown("### 📝 CPRA Requests")
+        st.info("Enter up to 5 CPRA requests that describe the documents you're looking for")
+        
+        # CPRA request inputs
+        requests = []
+        for i in range(5):
+            request = st.text_area(
+                f"Request {i+1}",
+                key=f"cpra_request_{i}",
+                height=80,
+                placeholder="e.g., All documents regarding roof leak issues on the Community Center construction project"
+            )
+            if request.strip():
+                requests.append(request.strip())
+        
+        st.session_state.cpra_requests = requests
+        
+        if requests:
+            st.success(f"✅ {len(requests)} CPRA request(s) configured")
+    
+    # Start processing button
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.session_state.emails and st.session_state.cpra_requests:
+            if st.button("🚀 Start Processing", type="primary", use_container_width=True):
+                # Initialize session
+                from src.utils.data_structures import CPRARequest
+                cpra_request_objs = [CPRARequest(text=req) for req in st.session_state.cpra_requests]
+                session = ProcessingSession(
+                    session_id=datetime.now().strftime("%Y%m%d_%H%M%S"),
+                    cpra_requests=cpra_request_objs,
+                    emails=st.session_state.emails
+                )
+                st.session_state.session = session
+                st.session_state.page = 'processing'
+                st.rerun()
+        else:
+            st.warning("⚠️ Please upload emails and enter at least one CPRA request")
+
+
+def processing_page():
+    """Processing page with real-time progress indicators."""
+    st.title("⚙️ Processing Documents")
+    
+    if not st.session_state.emails or not st.session_state.cpra_requests:
+        st.error("No emails or requests to process")
+        return
+    
+    # Processing phases
+    phases = [
+        ("🔍 Analyzing Responsiveness", "responsiveness"),
+        ("🛡️ Checking Exemptions", "exemptions"),
+        ("✅ Finalizing Results", "finalize")
+    ]
+    
+    # Create progress containers
+    progress_container = st.container()
+    stats_container = st.container()
+    log_container = st.container()
+    
+    with progress_container:
+        st.markdown("### 📊 Processing Progress")
+        overall_progress = st.progress(0)
+        phase_text = st.empty()
+        current_doc = st.empty()
+    
+    with stats_container:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            docs_processed = st.metric("Documents Processed", "0")
+        with col2:
+            responsive_count = st.metric("Responsive", "0")
+        with col3:
+            exemption_count = st.metric("With Exemptions", "0")
+        with col4:
+            processing_time = st.metric("Processing Time", "0s")
+    
+    with log_container:
+        st.markdown("### 📝 Processing Log")
+        log_area = st.empty()
+        logs = []
+    
+    # Start processing
+    start_time = time.time()
+    analyzer = CPRAAnalyzer()
+    total_emails = len(st.session_state.emails)
+    
+    # Phase 1: Responsiveness Analysis
+    phase_text.markdown("**Current Phase:** 🔍 Analyzing Responsiveness")
+    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting responsiveness analysis...")
+    log_area.text_area("Processing Log", "\n".join(logs), height=200)
+    
+    responsiveness_results = []
+    for i, email in enumerate(st.session_state.emails):
+        current_doc.text(f"Processing email {i+1}/{total_emails}: {email.subject or '(No subject)'}")
+        
+        # Analyze responsiveness
+        result = analyzer.analyze_email_responsiveness(
+            email, 
+            st.session_state.cpra_requests
+        )
+        responsiveness_results.append(result)
+        
+        # Update progress
+        progress = (i + 1) / (total_emails * 2)  # Two phases
+        overall_progress.progress(progress)
+        
+        # Update stats
+        docs_processed.metric("Documents Processed", f"{i+1}/{total_emails}")
+        responsive_so_far = sum(1 for r in responsiveness_results if r and r.is_responsive)
+        responsive_count.metric("Responsive", str(responsive_so_far))
+        elapsed = int(time.time() - start_time)
+        processing_time.metric("Processing Time", f"{elapsed}s")
+        
+        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {'Responsive' if result and result.is_responsive else 'Not Responsive'}")
+        log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
+    
+    st.session_state.responsiveness_results = responsiveness_results
+    
+    # Phase 2: Exemption Analysis
+    phase_text.markdown("**Current Phase:** 🛡️ Checking Exemptions")
+    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting exemption analysis...")
+    log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
+    
+    exemption_results = []
+    for i, email in enumerate(st.session_state.emails):
+        current_doc.text(f"Checking exemptions {i+1}/{total_emails}: {email.subject or '(No subject)'}")
+        
+        # Only analyze exemptions for responsive emails
+        if responsiveness_results[i] and responsiveness_results[i].is_responsive:
+            result = analyzer.analyze_email_exemptions(email)
+            exemption_results.append(result)
+        else:
+            exemption_results.append(None)
+        
+        # Update progress
+        progress = (total_emails + i + 1) / (total_emails * 2)
+        overall_progress.progress(progress)
+        
+        # Update stats
+        exemptions_so_far = sum(1 for r in exemption_results if r and r.has_exemptions)
+        exemption_count.metric("With Exemptions", str(exemptions_so_far))
+        elapsed = int(time.time() - start_time)
+        processing_time.metric("Processing Time", f"{elapsed}s")
+        
+        if exemption_results[i]:
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {len(exemption_results[i].exemptions)} exemption(s) found")
+            log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
+    
+    st.session_state.exemption_results = exemption_results
+    
+    # Phase 3: Finalize
+    phase_text.markdown("**Current Phase:** ✅ Finalizing Results")
+    current_doc.text("Preparing review system...")
+    
+    # Initialize review manager
+    # First update the session with the analysis results
+    # Convert lists to dicts indexed by email index
+    for i, result in enumerate(responsiveness_results):
+        if result:
+            st.session_state.session.responsiveness_results[str(i)] = result
+    
+    for i, result in enumerate(exemption_results):
+        if result:
+            st.session_state.session.exemption_results[str(i)] = result
+    
+    review_manager = ReviewManager()
+    review_manager.initialize_reviews(st.session_state.session)
+    st.session_state.review_manager = review_manager
+    st.session_state.processing_complete = True
+    
+    # Final stats
+    overall_progress.progress(1.0)
+    total_time = int(time.time() - start_time)
+    
+    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Processing complete!")
+    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Total time: {total_time}s")
+    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Average: {total_time/total_emails:.1f}s per email")
+    log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
+    
+    # Success message
+    st.success(f"""
+    ✅ **Processing Complete!**
+    - Processed {total_emails} emails in {total_time} seconds
+    - Found {sum(1 for r in responsiveness_results if r and r.is_responsive)} responsive documents
+    - Identified {sum(1 for r in exemption_results if r and r.has_exemptions)} documents with exemptions
+    """)
+    
+    # Navigate to results
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("📊 View Results Dashboard", type="primary", use_container_width=True):
+            st.session_state.page = 'results'
+            st.rerun()
+
+
+def results_dashboard():
+    """Results dashboard with document grouping and statistics."""
+    st.title("📊 Results Dashboard")
+    
+    if not st.session_state.processing_complete:
+        st.error("Processing not complete")
+        return
+    
+    # Summary statistics
+    st.markdown("### 📈 Processing Summary")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_emails = len(st.session_state.emails)
+    responsive_emails = [i for i, r in enumerate(st.session_state.responsiveness_results) 
+                        if r and r.is_responsive]
+    non_responsive_emails = [i for i, r in enumerate(st.session_state.responsiveness_results)
+                             if not r or not r.is_responsive]
+    exemption_emails = [i for i, r in enumerate(st.session_state.exemption_results)
+                       if r and r.has_exemptions]
+    
+    with col1:
+        st.metric("Total Documents", total_emails)
+    with col2:
+        st.metric("Responsive", len(responsive_emails))
+    with col3:
+        st.metric("Non-Responsive", len(non_responsive_emails))
+    with col4:
+        st.metric("With Exemptions", len(exemption_emails))
+    
+    # Document groupings
+    st.markdown("---")
+    st.markdown("### 📁 Document Groups")
+    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        f"✅ Responsive ({len(responsive_emails)})",
+        f"❌ Non-Responsive ({len(non_responsive_emails)})",
+        f"🛡️ With Exemptions ({len(exemption_emails)})",
+        "📊 By Confidence"
+    ])
+    
+    with tab1:
+        st.markdown("#### Responsive Documents")
+        if responsive_emails:
+            for idx in responsive_emails:
+                email = st.session_state.emails[idx]
+                result = st.session_state.responsiveness_results[idx]
+                
+                with st.expander(f"📧 {email.subject or '(No subject)'}"):
+                    col1, col2 = st.columns([2, 1])
+                    with col1:
+                        st.markdown(f"**From:** {email.sender}")
+                        st.markdown(f"**Date:** {email.date}")
+                        st.markdown(f"**Responsive to:** Request(s) {', '.join(map(str, result.responsive_to_requests))}")
+                    with col2:
+                        st.markdown(f"**Confidence:** {result.confidence}")
+                        if st.session_state.exemption_results[idx]:
+                            exemptions = st.session_state.exemption_results[idx].exemptions
+                            if exemptions:
+                                st.markdown(f"**Exemptions:** {len(exemptions)}")
+        else:
+            st.info("No responsive documents found")
+    
+    with tab2:
+        st.markdown("#### Non-Responsive Documents")
+        if non_responsive_emails:
+            for idx in non_responsive_emails:
+                email = st.session_state.emails[idx]
+                
+                with st.expander(f"📧 {email.subject or '(No subject)'}"):
+                    st.markdown(f"**From:** {email.sender}")
+                    st.markdown(f"**Date:** {email.date}")
+                    st.markdown("**Status:** Not responsive to any CPRA request")
+        else:
+            st.info("No non-responsive documents found")
+    
+    with tab3:
+        st.markdown("#### Documents with Exemptions")
+        if exemption_emails:
+            for idx in exemption_emails:
+                email = st.session_state.emails[idx]
+                exemption_result = st.session_state.exemption_results[idx]
+                
+                with st.expander(f"📧 {email.subject or '(No subject)'}"):
+                    st.markdown(f"**From:** {email.sender}")
+                    st.markdown(f"**Date:** {email.date}")
+                    st.markdown("**Exemptions:**")
+                    for exemption in exemption_result.exemptions:
+                        st.markdown(f"- **{exemption.exemption_type}** ({exemption.confidence})")
+                        st.caption(exemption.reasoning)
+        else:
+            st.info("No documents with exemptions found")
+    
+    with tab4:
+        st.markdown("#### Documents by Confidence Level")
+        
+        # Group by confidence
+        high_conf = []
+        medium_conf = []
+        low_conf = []
+        
+        for i, result in enumerate(st.session_state.responsiveness_results):
+            if result:
+                if result.confidence == "HIGH":
+                    high_conf.append(i)
+                elif result.confidence == "MEDIUM":
+                    medium_conf.append(i)
+                elif result.confidence == "LOW":
+                    low_conf.append(i)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown(f"**High Confidence ({len(high_conf)})**")
+            for idx in high_conf[:5]:  # Show first 5
+                email = st.session_state.emails[idx]
+                st.caption(f"• {email.subject or '(No subject)'}")
+            if len(high_conf) > 5:
+                st.caption(f"...and {len(high_conf)-5} more")
+        
+        with col2:
+            st.markdown(f"**Medium Confidence ({len(medium_conf)})**")
+            for idx in medium_conf[:5]:
+                email = st.session_state.emails[idx]
+                st.caption(f"• {email.subject or '(No subject)'}")
+            if len(medium_conf) > 5:
+                st.caption(f"...and {len(medium_conf)-5} more")
+        
+        with col3:
+            st.markdown(f"**Low Confidence ({len(low_conf)})**")
+            for idx in low_conf[:5]:
+                email = st.session_state.emails[idx]
+                st.caption(f"• {email.subject or '(No subject)'}")
+            if len(low_conf) > 5:
+                st.caption(f"...and {len(low_conf)-5} more")
+    
+    # Action buttons
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("👁️ Start Document Review", type="primary", use_container_width=True):
+            st.session_state.page = 'review'
+            st.rerun()
+
+
+def review_page():
+    """Document review interface."""
+    st.title("👁️ Document Review")
+    
+    if not st.session_state.processing_complete or not st.session_state.review_manager:
+        st.error("Processing not complete or review system not initialized")
+        return
+    
+    review_manager = st.session_state.review_manager
+    emails = st.session_state.emails
+    current_idx = st.session_state.current_review_index
+    
+    # Review progress
+    summary = review_manager.get_review_summary(st.session_state.session)
+    completed = summary['review_statuses']['completed']
+    total = summary['total_documents']
+    st.progress(completed / total if total > 0 else 0)
+    st.markdown(f"**Review Progress:** {completed} of {total} documents reviewed")
+    
+    # Navigation
+    col1, col2, col3 = st.columns([1, 3, 1])
+    with col1:
+        if st.button("⬅️ Previous", disabled=current_idx <= 0):
+            st.session_state.current_review_index = max(0, current_idx - 1)
+            st.rerun()
+    
+    with col2:
+        st.markdown(f"### Document {current_idx + 1} of {len(emails)}")
+    
+    with col3:
+        if st.button("Next ➡️", disabled=current_idx >= len(emails) - 1):
+            st.session_state.current_review_index = min(len(emails) - 1, current_idx + 1)
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Current document display
+    if current_idx < len(emails):
+        email = emails[current_idx]
+        responsiveness = st.session_state.responsiveness_results[current_idx]
+        exemptions = st.session_state.exemption_results[current_idx]
+        
+        # Two column layout
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("### 📧 Email Content")
+            
+            # Email metadata
+            st.markdown(f"**Subject:** {email.subject or '(No subject)'}")
+            st.markdown(f"**From:** {email.sender}")
+            st.markdown(f"**To:** {email.recipient}")
+            st.markdown(f"**Date:** {email.date}")
+            
+            # Email body
+            st.markdown("**Content:**")
+            st.text_area("Email Body", email.body, height=300, disabled=True)
+        
+        with col2:
+            st.markdown("### 🤖 AI Analysis")
+            
+            # Responsiveness analysis
+            st.markdown("#### Responsiveness")
+            if responsiveness:
+                if responsiveness.is_responsive:
+                    st.success(f"✅ Responsive to request(s): {', '.join(map(str, responsiveness.responsive_to_requests))}")
+                else:
+                    st.info("❌ Not responsive")
+                st.caption(f"Confidence: {responsiveness.confidence}")
+                st.caption(f"Reasoning: {responsiveness.reasoning}")
+            else:
+                st.warning("No responsiveness analysis available")
+            
+            # Exemption analysis
+            st.markdown("#### Exemptions")
+            if exemptions and exemptions.exemptions:
+                for exemption in exemptions.exemptions:
+                    st.warning(f"🛡️ {exemption.exemption_type}")
+                    st.caption(f"Confidence: {exemption.confidence}")
+                    st.caption(f"Reasoning: {exemption.reasoning}")
+            else:
+                st.success("✅ No exemptions identified")
+            
+            st.markdown("---")
+            
+            # Review controls
+            st.markdown("### ✏️ Review Decision")
+            
+            # Get current review state
+            current_review = st.session_state.session.document_reviews.get(str(current_idx))
+            
+            # Responsiveness override
+            is_responsive = st.checkbox(
+                "Document is responsive",
+                value=current_review.final_responsiveness if current_review else (responsiveness.is_responsive if responsiveness else False),
+                key=f"responsive_{current_idx}"
+            )
+            
+            # Exemption overrides
+            st.markdown("**Exemptions:**")
+            exemption_overrides = {}
+            
+            attorney_client = st.checkbox(
+                "Attorney-Client Privilege",
+                value=(current_review and "attorney_client_privilege" in current_review.final_exemptions) if current_review else False,
+                key=f"attorney_{current_idx}"
+            )
+            if attorney_client:
+                exemption_overrides["attorney_client_privilege"] = "User override"
+            
+            personnel = st.checkbox(
+                "Personnel Records",
+                value=(current_review and "personnel_records" in current_review.final_exemptions) if current_review else False,
+                key=f"personnel_{current_idx}"
+            )
+            if personnel:
+                exemption_overrides["personnel_records"] = "User override"
+            
+            deliberative = st.checkbox(
+                "Deliberative Process",
+                value=(current_review and "deliberative_process" in current_review.final_exemptions) if current_review else False,
+                key=f"deliberative_{current_idx}"
+            )
+            if deliberative:
+                exemption_overrides["deliberative_process"] = "User override"
+            
+            # Save review button
+            if st.button("💾 Save Review", type="primary", use_container_width=True):
+                # Get or ensure current review exists
+                if not current_review:
+                    # Review doesn't exist - this shouldn't happen but handle it
+                    st.error("Review not found for this document")
+                else:
+                    # Start review if not started
+                    if current_review.review_status == ReviewStatus.PENDING:
+                        review_manager.start_review(current_review)
+                    
+                    # Apply overrides directly to the review
+                    if is_responsive != current_review.ai_responsiveness:
+                        current_review.user_responsiveness_override = is_responsive
+                        current_review.responsiveness_override_reason = "User review override"
+                    
+                    # Apply exemption overrides
+                    if exemption_overrides:
+                        current_review.user_exemption_overrides = exemption_overrides
+                        current_review.exemption_override_reason = "User review override"
+                    
+                    # Finalize review
+                    review_manager.finalize_review(current_review)
+                
+                st.success("✅ Review saved!")
+                
+                # Auto-advance to next document
+                if current_idx < len(emails) - 1:
+                    st.session_state.current_review_index = current_idx + 1
+                    st.rerun()
+    
+    # Check if all reviews complete
+    summary = review_manager.get_review_summary(st.session_state.session)
+    if summary['review_statuses']['completed'] == summary['total_documents']:
+        st.session_state.review_complete = True
+        st.success("🎉 All documents reviewed!")
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            if st.button("📥 Proceed to Export", type="primary", use_container_width=True):
+                st.session_state.page = 'export'
+                st.rerun()
+
+
+def export_page():
+    """Export documents page."""
+    st.title("📥 Export Documents")
+    
+    if not st.session_state.review_complete or not st.session_state.review_manager:
+        st.error("Review not complete")
+        return
+    
+    # Initialize export manager if needed
+    if not st.session_state.export_manager:
+        st.session_state.export_manager = ExportManager(
+            output_dir="data/test_exports"
+        )
+    
+    export_manager = st.session_state.export_manager
+    
+    # Export summary
+    st.markdown("### 📊 Export Summary")
+    
+    # Get final determinations
+    final_determinations = []
+    for i in range(len(st.session_state.emails)):
+        review = st.session_state.session.document_reviews.get(str(i))
+        if review:
+            final_determinations.append({
+                'responsive': review.final_responsiveness,
+                'exemptions': review.final_exemptions
+            })
+        else:
+            # Use AI results if no review exists
+            responsiveness = st.session_state.responsiveness_results[i] if i < len(st.session_state.responsiveness_results) else None
+            exemptions = st.session_state.exemption_results[i] if i < len(st.session_state.exemption_results) else None
+            final_determinations.append({
+                'responsive': responsiveness.is_responsive if responsiveness else False,
+                'exemptions': {ex.exemption_type: ex.reasoning for ex in exemptions.exemptions} if exemptions and exemptions.exemptions else {}
+            })
+    
+    responsive_count = sum(1 for d in final_determinations if d['responsive'])
+    exempt_count = sum(1 for d in final_determinations if d['exemptions'])
+    producible_count = sum(1 for d in final_determinations if d['responsive'] and not d['exemptions'])
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Documents", len(st.session_state.emails))
+    with col2:
+        st.metric("Responsive", responsive_count)
+    with col3:
+        st.metric("With Exemptions", exempt_count)
+    with col4:
+        st.metric("Producible", producible_count)
+    
+    # Export options
+    st.markdown("---")
+    st.markdown("### 🔧 Export Options")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Production Documents")
+        st.info(f"Export {producible_count} responsive documents without exemptions")
+        
+        if st.button("📄 Generate Production PDF", type="primary", use_container_width=True):
+            with st.spinner("Generating production PDF..."):
+                try:
+                    export_dir = Path("data/test_exports")
+                    export_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    result = export_manager.generate_exports(st.session_state.session)
+                    
+                    if result['production_pdf']:
+                        st.success(f"✅ Production PDF created: {Path(result['production_pdf']).name}")
+                    else:
+                        st.warning("No documents to export in production PDF")
+                except Exception as e:
+                    st.error(f"Error generating production PDF: {str(e)}")
+    
+    with col2:
+        st.markdown("#### Privilege Log")
+        st.info(f"Document {exempt_count} withheld documents with exemptions")
+        
+        if st.button("📋 Generate Privilege Log", type="secondary", use_container_width=True):
+            with st.spinner("Generating privilege log..."):
+                try:
+                    export_dir = Path("data/test_exports")
+                    export_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    result = export_manager.generate_exports(st.session_state.session)
+                    
+                    if result['privilege_log_csv']:
+                        st.success(f"✅ Privilege log CSV created: {Path(result['privilege_log_csv']).name}")
+                    if result['privilege_log_pdf']:
+                        st.success(f"✅ Privilege log PDF created: {Path(result['privilege_log_pdf']).name}")
+                    
+                    if not result['privilege_log_csv'] and not result['privilege_log_pdf']:
+                        st.info("No withheld documents requiring privilege log")
+                except Exception as e:
+                    st.error(f"Error generating privilege log: {str(e)}")
+    
+    # Full export
+    st.markdown("---")
+    st.markdown("### 📦 Complete Export Package")
+    
+    if st.button("🚀 Generate All Export Files", type="primary", use_container_width=True):
+        with st.spinner("Generating complete export package..."):
+            try:
+                export_dir = Path("data/test_exports")
+                export_dir.mkdir(parents=True, exist_ok=True)
+                
+                result = export_manager.generate_exports(st.session_state.session)
+                
+                st.success("✅ Export complete!")
+                
+                # Show results
+                st.markdown("#### Generated Files:")
+                if result['production_pdf']:
+                    st.markdown(f"- 📄 Production PDF: `{Path(result['production_pdf']).name}`")
+                if result['privilege_log_csv']:
+                    st.markdown(f"- 📊 Privilege Log CSV: `{Path(result['privilege_log_csv']).name}`")
+                if result['privilege_log_pdf']:
+                    st.markdown(f"- 📋 Privilege Log PDF: `{Path(result['privilege_log_pdf']).name}`")
+                if result['summary_report']:
+                    st.markdown(f"- 📈 Summary Report: `{Path(result['summary_report']).name}`")
+                if result['manifest']:
+                    st.markdown(f"- 📝 Export Manifest: `{Path(result['manifest']).name}`")
+                
+                st.info(f"All files saved to: `{export_dir}`")
+                
+            except Exception as e:
+                st.error(f"Error during export: {str(e)}")
+    
+    # Session save option
+    st.markdown("---")
+    st.markdown("### 💾 Save Session")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Save Session (JSON)", type="secondary"):
+            try:
+                session_manager = SessionManager()
+                filepath = session_manager.save_session(
+                    st.session_state.session,
+                    st.session_state.emails,
+                    st.session_state.review_manager,
+                    format='json'
+                )
+                st.success(f"✅ Session saved: {Path(filepath).name}")
+            except Exception as e:
+                st.error(f"Error saving session: {str(e)}")
+    
+    with col2:
+        if st.button("Save Session (Pickle)", type="secondary"):
+            try:
+                session_manager = SessionManager()
+                filepath = session_manager.save_session(
+                    st.session_state.session,
+                    st.session_state.emails,
+                    st.session_state.review_manager,
+                    format='pickle'
+                )
+                st.success(f"✅ Session saved: {Path(filepath).name}")
+            except Exception as e:
+                st.error(f"Error saving session: {str(e)}")
+
 
 def main():
     """Main application entry point."""
     st.set_page_config(
         page_title="CPRA Processing Demo",
-        page_icon="📄",
-        layout="wide"
+        page_icon="🏛️",
+        layout="wide",
+        initial_sidebar_state="expanded"
     )
     
-    st.title("🏛️ CPRA Processing Application")
-    st.markdown("### California Public Records Act - Local AI Processing Demo")
+    # Initialize session state
+    init_session_state()
     
-    st.info("""
-    **Sprint 0 Complete!** ✅
+    # Sidebar navigation
+    sidebar_navigation()
     
-    The foundation has been established:
-    - ✅ Ollama integration with 3 AI models
-    - ✅ Email parsing functionality  
-    - ✅ Core data structures
-    - ✅ Sample data (10 test emails)
-    - ✅ Unit tests (15 tests passing)
-    
-    **Next Steps**: Sprint 1 - Responsiveness Analysis Engine
-    """)
-    
-    st.markdown("---")
-    
-    # Model status section
-    st.subheader("🤖 AI Model Status")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            label="gemma3:latest",
-            value="5.4s",
-            delta="Fast & Efficient"
-        )
-    
-    with col2:
-        st.metric(
-            label="phi4-mini-reasoning:3.8b", 
-            value="9.6s",
-            delta="Reasoning Capable"
-        )
-    
-    with col3:
-        st.metric(
-            label="gpt-oss:20b",
-            value="21.6s", 
-            delta="High Quality"
-        )
-    
-    st.markdown("---")
-    
-    # Sample data preview
-    st.subheader("📧 Sample Data Preview")
-    
-    st.markdown("""
-    **10 synthetic emails created** representing a municipal construction project:
-    
-    - **Responsive emails**: Roof issues, change orders, project delays, structural reports
-    - **Non-responsive emails**: Holiday planning, system tests, maintenance, budget meetings
-    - **Exemption triggers**: Attorney-client privilege, personnel records, deliberative process
-    """)
-    
-    # Show sample email list
-    if st.button("View Sample Email Subjects"):
-        sample_subjects = [
-            "RE: Community Center Roof Issues - Urgent Response Needed",
-            "Community Center - Material Delivery Schedule", 
-            "CONFIDENTIAL: Legal Analysis - Community Center Change Order #3",
-            "PERSONNEL CONFIDENTIAL: Performance Review - Project Team Member",
-            "Structural Analysis Report - Community Center Foundation",
-            "Weekly Budget Meeting - All Departments",
-            "Maintenance Schedule - Community Center HVAC",
-            "DRAFT: Press Release Regarding Community Center Delays",
-            "Holiday Party Planning Committee",
-            "Emergency Notification System Test - February 1st"
-        ]
-        
-        for i, subject in enumerate(sample_subjects, 1):
-            st.write(f"{i}. {subject}")
-    
-    st.markdown("---")
-    
-    st.success("""
-    **Ready for Sprint 1!** 🚀
-    
-    All Sprint 0 acceptance criteria met:
-    - Project runs locally with all dependencies
-    - Successful communication with Ollama  
-    - Email parsing working with test data
-    - Progress tracker functional
-    """)
+    # Page routing
+    if st.session_state.page == 'upload':
+        upload_page()
+    elif st.session_state.page == 'processing':
+        processing_page()
+    elif st.session_state.page == 'results':
+        results_dashboard()
+    elif st.session_state.page == 'review':
+        review_page()
+    elif st.session_state.page == 'export':
+        export_page()
+    else:
+        upload_page()
 
 
 if __name__ == "__main__":
