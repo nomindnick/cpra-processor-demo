@@ -31,7 +31,7 @@ from src.processors.session_manager import SessionManager
 from src.processors.export_manager import ExportManager
 from src.utils.data_structures import (
     Email, ProcessingSession, ResponsivenessAnalysis,
-    ExemptionAnalysis, DocumentReview, ReviewDecision,
+    ExemptionAnalysis, DocumentReview,
     ReviewStatus, CPRARequest
 )
 from src.utils.demo_utils import (
