@@ -176,10 +176,12 @@
 - Full end-to-end testing with complete email dataset
 
 **Integration Testing**:
-- Test complete workflow with 30-email dataset
+- Test complete workflow with 30-email dataset from `demo-files/synthetic_emails.txt`
+- Use CPRA requests from `demo-files/cpra_requests.txt`
 - Validate export functionality
 - Verify demo mode performance
 - Test error recovery scenarios
+- Confirm all exemptions are properly identified
 
 ### Sprint 8: Demo Preparation and Documentation
 **Goal**: Final polish and demo readiness
@@ -187,8 +189,8 @@
 **Deliverables**:
 - Create comprehensive README with setup instructions
 - Add code documentation and comments
-- Implement sample data loading functionality
-- Create demo script and usage guide
+- Implement sample data loading functionality (use `demo-files/` content)
+- Create demo script and usage guide (leverage `demo-files/demo_cpra_requests.md`)
 - Performance optimization and final testing
 - GitHub repository preparation
 

@@ -124,18 +124,22 @@ This application is a demonstration tool for the California Special District's A
 - **Chain Threading**: Clear reply/forward indicators
 - **Timestamp Format**: Consistent datetime formatting
 
-### Synthetic Email Dataset (30 emails initial)
-- **Project Context**: Municipal construction project with delays and change orders
+### Synthetic Email Dataset (30 emails - COMPLETED)
+**Location**: `demo-files/synthetic_emails.txt`
+- **Project Context**: Riverside Community Center construction project with delays and change orders
 - **Participants**:
   - City agency staff (project managers, engineers)
   - Construction contractor representatives
   - Legal counsel (city attorney, contractor legal)
   - Consultants and subcontractors
+- **Status**: ✅ Created and tested - all 30 emails parse successfully
 
-### CPRA Request Examples
-- **Request 1**: "All documents regarding the roof leak issues on the Community Center construction project"
-- **Request 2**: "All documents regarding Change Order #3 and the agency's decision to approve or deny it"
-- **Request 3**: "All internal communications about project delays between January and March 2024"
+### CPRA Request Examples (COMPLETED)
+**Location**: `demo-files/cpra_requests.txt`
+- **Request 1**: "All documents regarding roof leaks, water damage, or water intrusion at the Community Center"
+- **Request 2**: "All documents related to Change Order #3 including electrical upgrades and cost negotiations"
+- **Request 3**: "All emails discussing construction delays or schedule impacts between January and April 2024"
+- **Demo Guide**: Full presentation notes available in `demo-files/demo_cpra_requests.md`
 
 ### Email Content Distribution
 - **Responsive Documents**: ~60% of emails

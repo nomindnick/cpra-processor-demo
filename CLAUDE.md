@@ -49,6 +49,13 @@ python src/parsers/email_parser.py
 python src/models/ollama_client.py
 ```
 
+### Demo Data Files
+The `demo-files/` directory contains ready-to-use demonstration data:
+- **`synthetic_emails.txt`**: 30 realistic emails for the Riverside Community Center construction project
+- **`cpra_requests.txt`**: 3 sample CPRA requests for processing
+- **`demo_cpra_requests.md`**: Comprehensive demo guide with expected results and talking points
+- **`email_generation_spec.md`**: Specification used to generate the synthetic emails
+
 ### Required Ollama Models
 Before running the application, ensure these models are available:
 ```bash
@@ -128,24 +135,34 @@ This project follows an 8-sprint incremental development approach:
 
 ## Sample Data & CPRA Requests
 
+### Demo Data Location
+Complete demonstration data is available in the `demo-files/` directory:
+- **Emails**: `demo-files/synthetic_emails.txt` (30 emails, ready to upload)
+- **CPRA Requests**: `demo-files/cpra_requests.txt` (3 requests for demo)
+- **Demo Guide**: `demo-files/demo_cpra_requests.md` (presentation notes and expected results)
+
+### Dataset Overview
 The synthetic email dataset represents a municipal construction project with delays and change orders:
 
-**Project Context**: Community Center construction project with:
+**Project Context**: Riverside Community Center construction project with:
 - City agency staff (project managers, engineers)
 - Construction contractor representatives  
 - Legal counsel (city attorney, contractor legal)
 - Consultants and subcontractors
 
-**Email Distribution**:
-- **Responsive Documents**: ~60% of emails
-- **Non-Responsive**: ~40% of emails  
-- **Privilege/Exemption Triggers**: ~30% of total emails
-- **Individual emails**: ~70%, **Email chains**: ~30%
+**Email Distribution** (30 total emails):
+- **Responsive to Request 1 (Roof Leak)**: 8 emails
+- **Responsive to Request 2 (Change Order #3)**: 9 emails
+- **Responsive to Request 3 (Delays)**: 7 emails
+- **Non-Responsive**: 6 emails
+- **Attorney-Client Privilege**: 4 emails
+- **Personnel Records**: 3 emails
+- **Deliberative Process**: 4 emails
 
-**Target CPRA Requests**:
-1. "All documents regarding the roof leak issues on the Community Center construction project"
-2. "All documents regarding Change Order #3 and the agency's decision to approve or deny it"  
-3. "All internal communications about project delays between January and March 2024"
+**Sample CPRA Requests** (from `demo-files/cpra_requests.txt`):
+1. "All documents regarding roof leaks, water damage, or water intrusion at the Community Center"
+2. "All documents related to Change Order #3 including electrical upgrades and cost negotiations"  
+3. "All emails discussing construction delays or schedule impacts between January and April 2024"
 
 **Content Types**:
 - **Responsive content**: Roof issues, change orders, project delays, structural reports
