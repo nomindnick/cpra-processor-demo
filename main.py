@@ -2,12 +2,11 @@
 """
 CPRA Processing Application - Main Streamlit Application
 
-Sprint 5 Implementation: Core Streamlit Interface
-- File upload with drag-and-drop
-- CPRA request input forms
-- Results dashboard with document grouping
-- Document review interface
-- Navigation and state management
+Sprint 7 Enhancement: End-to-End Integration
+- Enhanced error handling and recovery
+- Configuration management integration
+- Session recovery features
+- Performance optimizations
 """
 
 import streamlit as st
@@ -15,13 +14,16 @@ import os
 import sys
 import json
 import time
+import logging
+import traceback
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 
 # Add src to path for imports
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
+from src.config import get_config
 from src.parsers.email_parser import EmailParser
 from src.processors.cpra_analyzer import CPRAAnalyzer
 from src.processors.review_manager import ReviewManager
@@ -30,7 +32,7 @@ from src.processors.export_manager import ExportManager
 from src.utils.data_structures import (
     Email, ProcessingSession, ResponsivenessAnalysis,
     ExemptionAnalysis, DocumentReview, ReviewDecision,
-    ReviewStatus
+    ReviewStatus, CPRARequest
 )
 from src.utils.demo_utils import (
     check_network_connectivity, get_system_resources,
@@ -44,6 +46,16 @@ from src.components.resource_monitor import (
     ResourceMonitor, create_performance_gauge,
     create_model_comparison_chart
 )
+
+# Initialize configuration
+config = get_config()
+
+# Setup logging
+logging.basicConfig(
+    level=getattr(logging, config.logging.log_level),
+    format=config.logging.log_format
+)
+logger = logging.getLogger(__name__)
 
 
 def init_session_state():
@@ -70,29 +82,108 @@ def init_session_state():
         st.session_state.page = 'upload'
     if 'export_manager' not in st.session_state:
         st.session_state.export_manager = None
-    # Demo mode settings
+    # Demo mode settings from config
     if 'demo_mode' not in st.session_state:
-        st.session_state.demo_mode = False
+        st.session_state.demo_mode = config.demo.enable_by_default
     if 'demo_settings' not in st.session_state:
-        st.session_state.demo_settings = {}
+        st.session_state.demo_settings = {
+            'speed': config.demo.default_speed,
+            'animations': config.demo.show_animations,
+            'resource_monitor': config.demo.show_resource_monitor,
+            'typewriter': config.demo.typewriter_effect
+        }
     if 'resource_monitor' not in st.session_state:
         st.session_state.resource_monitor = ResourceMonitor()
+    # Error recovery state
+    if 'last_error' not in st.session_state:
+        st.session_state.last_error = None
+    if 'recovery_session_path' not in st.session_state:
+        st.session_state.recovery_session_path = None
 
 
-def load_sample_data():
-    """Load sample data for demo purposes."""
-    sample_file_path = Path("data/sample_emails/test_emails.txt")
-    if sample_file_path.exists():
-        with open(sample_file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+def load_sample_data() -> Optional[str]:
+    """Load sample data for demo purposes with error handling."""
+    try:
+        sample_file_path = Path("data/sample_emails/test_emails.txt")
+        if sample_file_path.exists():
+            with open(sample_file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+    except Exception as e:
+        logger.error(f"Error loading sample data: {e}")
+        st.session_state.last_error = f"Failed to load sample data: {str(e)}"
     return None
 
 
 def parse_emails(content: str) -> List[Email]:
-    """Parse email content into Email objects."""
-    parser = EmailParser()
-    emails = parser.parse_email_file(content)
-    return emails
+    """Parse email content into Email objects with error handling."""
+    try:
+        parser = EmailParser()
+        emails = parser.parse_email_file(content)
+        logger.info(f"Successfully parsed {len(emails)} emails")
+        return emails
+    except Exception as e:
+        logger.error(f"Error parsing emails: {e}")
+        st.session_state.last_error = f"Failed to parse emails: {str(e)}"
+        return []
+
+
+def save_recovery_session():
+    """Save current session for recovery purposes."""
+    if not config.session.enable_auto_save:
+        return
+    
+    try:
+        if st.session_state.session:
+            session_manager = SessionManager()
+            recovery_path = Path(config.session.session_directory) / "recovery"
+            recovery_path.mkdir(parents=True, exist_ok=True)
+            
+            recovery_file = recovery_path / f"recovery_{st.session_state.session.session_id}.pkl"
+            session_manager.save_session(st.session_state.session, str(recovery_file))
+            st.session_state.recovery_session_path = str(recovery_file)
+            
+            logger.info(f"Saved recovery session to {recovery_file}")
+    except Exception as e:
+        logger.error(f"Failed to save recovery session: {e}")
+
+
+def load_recovery_session() -> Optional[ProcessingSession]:
+    """Attempt to load a recovery session."""
+    if not config.session.enable_recovery:
+        return None
+    
+    try:
+        recovery_path = Path(config.session.session_directory) / "recovery"
+        if recovery_path.exists():
+            # Find most recent recovery file
+            recovery_files = list(recovery_path.glob("recovery_*.pkl"))
+            if recovery_files:
+                latest_file = max(recovery_files, key=lambda p: p.stat().st_mtime)
+                
+                session_manager = SessionManager()
+                session = session_manager.load_session(str(latest_file))
+                
+                logger.info(f"Loaded recovery session from {latest_file}")
+                return session
+    except Exception as e:
+        logger.error(f"Failed to load recovery session: {e}")
+    
+    return None
+
+
+def clear_recovery_sessions():
+    """Clear old recovery session files."""
+    try:
+        recovery_path = Path(config.session.session_directory) / "recovery"
+        if recovery_path.exists():
+            for recovery_file in recovery_path.glob("recovery_*.pkl"):
+                # Remove files older than configured timeout
+                age_hours = (datetime.now() - datetime.fromtimestamp(recovery_file.stat().st_mtime)).total_seconds() / 3600
+                if age_hours > config.session.session_timeout_hours:
+                    recovery_file.unlink()
+                    logger.info(f"Removed old recovery file: {recovery_file}")
+    except Exception as e:
+        logger.error(f"Error clearing recovery sessions: {e}")
 
 
 def sidebar_navigation():
@@ -165,6 +256,35 @@ def sidebar_navigation():
 def upload_page():
     """File upload and CPRA request input page."""
     st.title("📤 Upload Documents & Configure Requests")
+    
+    # Check for recovery session
+    if config.session.enable_recovery and not st.session_state.session:
+        recovery_session = load_recovery_session()
+        if recovery_session:
+            st.info("🔄 Recovery session found!")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Restore Previous Session", type="primary"):
+                    st.session_state.session = recovery_session
+                    st.session_state.emails = recovery_session.emails
+                    st.session_state.cpra_requests = [r.text for r in recovery_session.cpra_requests]
+                    st.session_state.responsiveness_results = list(recovery_session.responsiveness_results.values())
+                    st.session_state.exemption_results = list(recovery_session.exemption_results.values())
+                    
+                    # Restore review manager if processing was complete
+                    if recovery_session.responsiveness_results:
+                        review_manager = ReviewManager()
+                        review_manager.initialize_reviews(recovery_session)
+                        st.session_state.review_manager = review_manager
+                        st.session_state.processing_complete = True
+                        st.session_state.page = 'results'
+                        st.rerun()
+                    else:
+                        st.success("✅ Session restored! Ready to continue processing.")
+            with col2:
+                if st.button("Start Fresh"):
+                    clear_recovery_sessions()
+                    st.rerun()
     
     # Check if demo data was loaded from sidebar
     if st.session_state.demo_mode and st.session_state.get('demo_data_loaded'):
@@ -356,10 +476,17 @@ def processing_page():
         log_area = st.empty()
         logs = []
     
-    # Start processing
+    # Start processing with error handling
     start_time = time.time()
-    analyzer = CPRAAnalyzer()
+    try:
+        analyzer = CPRAAnalyzer(model_name=config.model.responsiveness_model)
+    except Exception as e:
+        st.error(f"❌ Failed to initialize analyzer: {str(e)}")
+        logger.error(f"Analyzer initialization failed: {e}")
+        st.stop()
+    
     total_emails = len(st.session_state.emails)
+    errors_encountered = []
     
     # Phase 1: Responsiveness Analysis
     if demo_mode:
@@ -391,12 +518,23 @@ def processing_page():
             # Add processing delay for visual effect
             simulate_processing_delay(demo_mode, base_delay=1.0, speed_multiplier=speed)
         
-        # Analyze responsiveness
-        result = analyzer.analyze_email_responsiveness(
-            email, 
-            st.session_state.cpra_requests
-        )
-        responsiveness_results.append(result)
+        # Analyze responsiveness with error handling
+        try:
+            result = analyzer.analyze_email_responsiveness(
+                email, 
+                st.session_state.cpra_requests
+            )
+            responsiveness_results.append(result)
+        except Exception as e:
+            logger.error(f"Error analyzing email {i+1}: {e}")
+            errors_encountered.append(f"Email {i+1}: {str(e)}")
+            # Create failed result
+            responsiveness_results.append(None)
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error processing email {i+1}")
+        
+        # Auto-save session periodically
+        if (i + 1) % config.processing.auto_save_interval == 0:
+            save_recovery_session()
         
         # Clear AI activity after processing
         if demo_mode:
@@ -465,8 +603,14 @@ def processing_page():
                 ai_activity.warning(get_ai_thinking_animation("exemptions"))
                 simulate_processing_delay(demo_mode, base_delay=0.8, speed_multiplier=speed)
             
-            result = analyzer.analyze_email_exemptions(email)
-            exemption_results.append(result)
+            try:
+                result = analyzer.analyze_email_exemptions(email)
+                exemption_results.append(result)
+            except Exception as e:
+                logger.error(f"Error analyzing exemptions for email {i+1}: {e}")
+                errors_encountered.append(f"Exemption analysis for email {i+1}: {str(e)}")
+                exemption_results.append(None)
+                logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error checking exemptions for email {i+1}")
             
             if demo_mode:
                 if result and result.has_exemptions:
@@ -508,21 +652,39 @@ def processing_page():
         ai_activity.info("📊 Generating statistics and summary...")
         simulate_processing_delay(demo_mode, base_delay=1.5, speed_multiplier=speed)
     
-    # Initialize review manager
-    # First update the session with the analysis results
-    # Convert lists to dicts indexed by email index
-    for i, result in enumerate(responsiveness_results):
-        if result:
-            st.session_state.session.responsiveness_results[str(i)] = result
+    # Initialize review manager with error handling
+    try:
+        # First update the session with the analysis results
+        # Convert lists to dicts indexed by email index
+        for i, result in enumerate(responsiveness_results):
+            if result:
+                st.session_state.session.responsiveness_results[str(i)] = result
+        
+        for i, result in enumerate(exemption_results):
+            if result:
+                st.session_state.session.exemption_results[str(i)] = result
+        
+        review_manager = ReviewManager()
+        review_manager.initialize_reviews(st.session_state.session)
+        st.session_state.review_manager = review_manager
+        st.session_state.processing_complete = True
+        
+        # Save final session for recovery
+        save_recovery_session()
+        
+    except Exception as e:
+        logger.error(f"Error initializing review manager: {e}")
+        st.error(f"❌ Failed to initialize review system: {str(e)}")
+        errors_encountered.append(f"Review system initialization: {str(e)}")
     
-    for i, result in enumerate(exemption_results):
-        if result:
-            st.session_state.session.exemption_results[str(i)] = result
-    
-    review_manager = ReviewManager()
-    review_manager.initialize_reviews(st.session_state.session)
-    st.session_state.review_manager = review_manager
-    st.session_state.processing_complete = True
+    # Show error summary if any errors occurred
+    if errors_encountered:
+        st.warning(f"⚠️ Processing completed with {len(errors_encountered)} error(s)")
+        with st.expander("View error details"):
+            for error in errors_encountered:
+                st.text(error)
+    else:
+        st.success("✅ Processing completed successfully!")
     
     # Final stats
     overall_progress.progress(1.0)

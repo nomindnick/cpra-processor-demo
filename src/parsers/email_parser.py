@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple
 from email.utils import parsedate_to_datetime, parseaddr
 from dateutil import parser as date_parser
 
-from utils.data_structures import Email
+from src.utils.data_structures import Email
 
 
 class EmailParser:
