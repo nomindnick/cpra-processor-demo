@@ -357,60 +357,179 @@ Provide your analysis in the required JSON format with exactly {len(cpra_request
     def analyze_exemptions(
         self, 
         model_name: str, 
-        email_content: str
+        email_content: str,
+        retry_attempts: int = 3
     ) -> Optional[Dict]:
         """
-        Analyze an email for CPRA exemptions.
+        Analyze an email for CPRA exemptions with enhanced prompting and retry logic.
         
         Args:
             model_name: Model to use for analysis
             email_content: The email content to analyze
+            retry_attempts: Number of retry attempts for failed requests
             
         Returns:
             Dictionary with exemption analysis results or None if failed
         """
-        system_prompt = """You are a legal assistant specializing in California Public Records Act (CPRA) exemptions.
+        system_prompt = """You are an expert legal assistant specializing in California Public Records Act (CPRA) exemptions.
 Your task is to identify potential exemptions that may apply to email content.
 
-Focus on these exemption types:
-1. Attorney-Client Privilege: Communications between attorney and client
-2. Personnel Records: Information relating to employee performance, discipline, or personal matters
-3. Deliberative Process: Pre-decisional discussions, recommendations, or draft documents
+EXEMPTION DEFINITIONS:
+
+1. ATTORNEY-CLIENT PRIVILEGE:
+   - Communications between attorney and client for legal advice
+   - Legal strategy discussions
+   - Attorney work product or legal analysis
+   - Must involve actual attorney-client relationship
+
+2. PERSONNEL RECORDS:
+   - Employee performance evaluations or reviews
+   - Disciplinary actions or investigations
+   - Personal employee information (medical, financial, private matters)
+   - HR-related confidential discussions about specific individuals
+
+3. DELIBERATIVE PROCESS:
+   - Pre-decisional discussions and recommendations
+   - Draft documents not yet finalized
+   - Internal policy discussions before final decisions
+   - Advisory opinions or preliminary analysis
+
+CONFIDENCE LEVELS:
+- "high": Clear, definitive indicators of exemption
+- "medium": Probable exemption with some indicators
+- "low": Possible exemption but uncertain
 
 You must respond with valid JSON only, using this exact format:
 {
     "exemptions": {
-        "attorney_client": {"applies": true/false, "confidence": "high/medium/low", "reasoning": "explanation"},
-        "personnel": {"applies": true/false, "confidence": "high/medium/low", "reasoning": "explanation"},
-        "deliberative": {"applies": true/false, "confidence": "high/medium/low", "reasoning": "explanation"}
+        "attorney_client": {"applies": true/false, "confidence": "high/medium/low", "reasoning": "brief explanation"},
+        "personnel": {"applies": true/false, "confidence": "high/medium/low", "reasoning": "brief explanation"},
+        "deliberative": {"applies": true/false, "confidence": "high/medium/low", "reasoning": "brief explanation"}
     }
-}"""
+}
+
+CRITICAL: Your response must be valid JSON with exactly the structure shown above."""
         
         prompt = f"""Analyze this email for potential CPRA exemptions:
 
-EMAIL TO ANALYZE:
+EMAIL DOCUMENT TO ANALYZE:
 {email_content}
 
-Respond with JSON only."""
+Provide your analysis in the required JSON format."""
         
-        response = self.generate_structured_response(
-            model_name=model_name,
-            prompt=prompt,
-            system_prompt=system_prompt,
-            temperature=0.2,
-            max_tokens=600
-        )
+        # Retry logic for better reliability
+        for attempt in range(retry_attempts):
+            json_content = ""
+            response = ""
+            try:
+                response = self.generate_structured_response(
+                    model_name=model_name,
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=0.2,
+                    max_tokens=800
+                )
+                
+                if not response:
+                    if attempt < retry_attempts - 1:
+                        self.logger.warning(f"Exemption analysis attempt {attempt + 1} failed, retrying...")
+                        continue
+                    return None
+                
+                # Try to parse JSON response, handling markdown code blocks
+                json_content = self._extract_json_from_response(response)
+                
+                # Additional check for empty JSON content
+                if not json_content or json_content.strip() == "":
+                    if attempt < retry_attempts - 1:
+                        self.logger.warning(f"Empty JSON content on exemption analysis attempt {attempt + 1}, retrying...")
+                        continue
+                    return None
+                
+                result = json.loads(json_content)
+                
+                # Validate the response structure
+                if self._validate_exemption_result(result):
+                    return result
+                else:
+                    if attempt < retry_attempts - 1:
+                        self.logger.warning(f"Invalid exemption analysis structure on attempt {attempt + 1}, retrying...")
+                        continue
+                    return None
+                    
+            except json.JSONDecodeError as e:
+                if attempt < retry_attempts - 1:
+                    self.logger.warning(f"JSON parse error on exemption analysis attempt {attempt + 1}: {e}, retrying...")
+                    self.logger.debug(f"Raw response: {response}")
+                    self.logger.debug(f"Extracted JSON: {json_content}")
+                    continue
+                else:
+                    self.logger.error(f"Failed to parse JSON response for exemption analysis after {retry_attempts} attempts: {e}")
+                    self.logger.debug(f"Raw response: {response}")
+                    self.logger.debug(f"Extracted JSON: {json_content}")
+                    return None
+            except Exception as e:
+                self.logger.error(f"Unexpected error in exemption analysis: {e}")
+                self.logger.debug(f"Raw response: {response}")
+                self.logger.debug(f"Extracted JSON: {json_content}")
+                return None
         
-        if not response:
-            return None
+        return None
+    
+    def _validate_exemption_result(self, result: Dict) -> bool:
+        """
+        Validate the structure of an exemption analysis result.
+        
+        Args:
+            result: The parsed JSON result
             
+        Returns:
+            True if valid, False otherwise
+        """
         try:
-            # Try to parse JSON response
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse JSON response: {e}")
-            self.logger.debug(f"Raw response: {response}")
-            return None
+            # Check required top-level key
+            if "exemptions" not in result:
+                self.logger.error("Missing 'exemptions' key in result")
+                return False
+            
+            exemptions = result["exemptions"]
+            
+            # Check required exemption types
+            required_exemptions = ["attorney_client", "personnel", "deliberative"]
+            if not all(exemption in exemptions for exemption in required_exemptions):
+                self.logger.error(f"Missing required exemption types. Expected: {required_exemptions}, Got: {list(exemptions.keys())}")
+                return False
+            
+            # Check structure of each exemption
+            valid_confidence = ['high', 'medium', 'low']
+            for exemption_type, exemption_data in exemptions.items():
+                if exemption_type not in required_exemptions:
+                    continue
+                    
+                # Check required fields
+                required_fields = ["applies", "confidence", "reasoning"]
+                if not all(field in exemption_data for field in required_fields):
+                    self.logger.error(f"Missing required fields in {exemption_type}: {list(exemption_data.keys())}")
+                    return False
+                
+                # Check data types and values
+                if not isinstance(exemption_data["applies"], bool):
+                    self.logger.error(f"Invalid 'applies' value in {exemption_type} - must be boolean")
+                    return False
+                
+                if exemption_data["confidence"].lower() not in valid_confidence:
+                    self.logger.error(f"Invalid confidence value in {exemption_type}. Must be one of: {valid_confidence}")
+                    return False
+                
+                if not isinstance(exemption_data["reasoning"], str):
+                    self.logger.error(f"Invalid reasoning value in {exemption_type} - must be string")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error validating exemption result: {e}")
+            return False
 
 
 def test_all_models() -> Dict[str, Dict]:

@@ -14,8 +14,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from models.ollama_client import OllamaClient
 from utils.data_structures import (
-    Email, CPRARequest, ResponsivenessAnalysis, 
-    ConfidenceLevel, ProcessingStats
+    Email, CPRARequest, ResponsivenessAnalysis, ExemptionAnalysis,
+    ConfidenceLevel, ProcessingStats, ExemptionType
 )
 
 
@@ -153,6 +153,212 @@ class CPRAAnalyzer:
                         f"Responsive: {stats.responsive_emails}, Errors: {stats.analysis_errors}")
         
         return results, stats
+    
+    def analyze_email_exemptions(
+        self,
+        email: Email,
+        email_index: Optional[int] = None
+    ) -> Optional[ExemptionAnalysis]:
+        """
+        Analyze a single email's exemptions to CPRA exemption types.
+        
+        Args:
+            email: Email object to analyze
+            email_index: Optional index for tracking (used as email_id if message_id not available)
+            
+        Returns:
+            ExemptionAnalysis object or None if analysis failed
+        """
+        try:
+            start_time = time.time()
+            
+            # Create email identifier
+            email_id = email.message_id if email.message_id else f"email_{email_index or 0}"
+            
+            # Prepare email content for analysis
+            email_content = email.get_display_text()
+            
+            self.logger.info(f"Analyzing email {email_id} for CPRA exemptions")
+            
+            # Call AI model for exemption analysis
+            analysis_result = self.ollama_client.analyze_exemptions(
+                model_name=self.model_name,
+                email_content=email_content
+            )
+            
+            if not analysis_result:
+                self.logger.error(f"Failed to get exemption analysis result for email {email_id}")
+                return None
+            
+            # Parse and validate the analysis result
+            return self._parse_exemption_result(
+                email_id=email_id,
+                analysis_result=analysis_result,
+                processing_time=time.time() - start_time
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing email exemptions: {e}")
+            return None
+    
+    def analyze_batch_exemptions(
+        self,
+        emails: List[Email],
+        progress_callback: Optional[callable] = None
+    ) -> Tuple[Dict[str, ExemptionAnalysis], ProcessingStats]:
+        """
+        Analyze multiple emails for exemptions in batch.
+        
+        Args:
+            emails: List of Email objects to analyze
+            progress_callback: Optional callback function for progress updates
+            
+        Returns:
+            Tuple of (exemption_analysis_results_dict, processing_stats)
+        """
+        results = {}
+        stats = ProcessingStats(
+            total_emails=len(emails),
+            start_time=datetime.now()
+        )
+        
+        self.logger.info(f"Starting batch exemption analysis of {len(emails)} emails")
+        
+        for i, email in enumerate(emails):
+            try:
+                # Progress callback
+                if progress_callback:
+                    progress_callback(i, len(emails), email)
+                
+                # Analyze individual email
+                analysis = self.analyze_email_exemptions(email, i)
+                
+                if analysis:
+                    email_id = email.message_id if email.message_id else f"email_{i}"
+                    results[email_id] = analysis
+                    
+                    # Update stats
+                    if analysis.has_any_exemption():
+                        stats.exempt_emails += 1
+                else:
+                    stats.analysis_errors += 1
+                    self.logger.warning(f"Failed to analyze exemptions for email {i}")
+                
+                stats.processed_emails += 1
+                
+            except Exception as e:
+                self.logger.error(f"Error processing exemptions for email {i}: {e}")
+                stats.analysis_errors += 1
+        
+        stats.end_time = datetime.now()
+        
+        self.logger.info(f"Batch exemption analysis complete. Processed: {stats.processed_emails}/{stats.total_emails}, "
+                        f"Exempt: {stats.exempt_emails}, Errors: {stats.analysis_errors}")
+        
+        return results, stats
+    
+    def _parse_exemption_result(
+        self,
+        email_id: str,
+        analysis_result: Dict,
+        processing_time: float
+    ) -> Optional[ExemptionAnalysis]:
+        """
+        Parse and validate AI exemption analysis result into ExemptionAnalysis object.
+        
+        Args:
+            email_id: Identifier for the email
+            analysis_result: Raw analysis result from AI model
+            processing_time: Time taken for analysis in seconds
+            
+        Returns:
+            ExemptionAnalysis object or None if parsing failed
+        """
+        try:
+            # Validate required structure
+            if "exemptions" not in analysis_result:
+                self.logger.error(f"Missing 'exemptions' key in analysis result: {analysis_result}")
+                return None
+            
+            exemptions_data = analysis_result["exemptions"]
+            required_exemptions = ["attorney_client", "personnel", "deliberative"]
+            
+            # Validate all required exemption types are present
+            if not all(exemption in exemptions_data for exemption in required_exemptions):
+                self.logger.error(f"Missing required exemption types. Expected: {required_exemptions}, "
+                                f"Got: {list(exemptions_data.keys())}")
+                return None
+            
+            # Parse each exemption type
+            attorney_client_data = self._parse_single_exemption(exemptions_data["attorney_client"])
+            personnel_data = self._parse_single_exemption(exemptions_data["personnel"])
+            deliberative_data = self._parse_single_exemption(exemptions_data["deliberative"])
+            
+            if not all([attorney_client_data, personnel_data, deliberative_data]):
+                self.logger.error("Failed to parse one or more exemption types")
+                return None
+            
+            # Create ExemptionAnalysis object
+            return ExemptionAnalysis(
+                email_id=email_id,
+                attorney_client=attorney_client_data,
+                personnel=personnel_data,
+                deliberative=deliberative_data,
+                model_used=self.model_name,
+                analysis_timestamp=datetime.now(),
+                processing_time_seconds=processing_time
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing exemption result: {e}")
+            return None
+    
+    def _parse_single_exemption(self, exemption_data: Dict) -> Optional[Dict]:
+        """
+        Parse and validate a single exemption's data.
+        
+        Args:
+            exemption_data: Dictionary with applies, confidence, reasoning
+            
+        Returns:
+            Validated exemption dictionary or None if invalid
+        """
+        try:
+            # Check required fields
+            required_fields = ["applies", "confidence", "reasoning"]
+            if not all(field in exemption_data for field in required_fields):
+                self.logger.error(f"Missing required fields in exemption data: {list(exemption_data.keys())}")
+                return None
+            
+            applies = exemption_data["applies"]
+            confidence_raw = exemption_data["confidence"]
+            reasoning = exemption_data["reasoning"]
+            
+            # Validate data types
+            if not isinstance(applies, bool):
+                self.logger.error(f"Invalid 'applies' value - must be boolean, got: {type(applies)}")
+                return None
+            
+            if not isinstance(reasoning, str):
+                self.logger.error(f"Invalid 'reasoning' value - must be string, got: {type(reasoning)}")
+                return None
+            
+            # Parse confidence level
+            try:
+                confidence = ConfidenceLevel(confidence_raw.lower())
+            except ValueError:
+                self.logger.warning(f"Invalid confidence level '{confidence_raw}', defaulting to LOW")
+                confidence = ConfidenceLevel.LOW
+            
+            return {
+                "applies": applies,
+                "confidence": confidence,
+                "reasoning": reasoning
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing single exemption: {e}")
+            return None
     
     def _parse_responsiveness_result(
         self,
