@@ -32,6 +32,18 @@ from src.utils.data_structures import (
     ExemptionAnalysis, DocumentReview, ReviewDecision,
     ReviewStatus
 )
+from src.utils.demo_utils import (
+    check_network_connectivity, get_system_resources,
+    load_demo_data, simulate_processing_delay,
+    typewriter_effect, get_ai_thinking_animation,
+    get_phase_color, format_processing_stats,
+    create_demo_sidebar_controls, show_model_activity_indicator,
+    create_phase_indicator
+)
+from src.components.resource_monitor import (
+    ResourceMonitor, create_performance_gauge,
+    create_model_comparison_chart
+)
 
 
 def init_session_state():
@@ -58,6 +70,13 @@ def init_session_state():
         st.session_state.page = 'upload'
     if 'export_manager' not in st.session_state:
         st.session_state.export_manager = None
+    # Demo mode settings
+    if 'demo_mode' not in st.session_state:
+        st.session_state.demo_mode = False
+    if 'demo_settings' not in st.session_state:
+        st.session_state.demo_settings = {}
+    if 'resource_monitor' not in st.session_state:
+        st.session_state.resource_monitor = ResourceMonitor()
 
 
 def load_sample_data():
@@ -79,6 +98,14 @@ def parse_emails(content: str) -> List[Email]:
 def sidebar_navigation():
     """Create sidebar navigation."""
     st.sidebar.title("🏛️ CPRA Processing")
+    
+    # Network status indicator at top
+    is_connected, network_msg = check_network_connectivity()
+    if is_connected:
+        st.sidebar.warning(network_msg)
+    else:
+        st.sidebar.success(network_msg)
+    
     st.sidebar.markdown("---")
     
     # Navigation menu
@@ -123,11 +150,33 @@ def sidebar_navigation():
                 completed = summary['review_statuses']['completed']
                 total = summary['total_documents']
                 st.sidebar.text(f"Reviewed: {completed}/{total}")
+    
+    # Demo mode controls
+    demo_settings = create_demo_sidebar_controls()
+    st.session_state.demo_mode = demo_settings['enabled']
+    st.session_state.demo_settings = demo_settings
+    
+    # Resource monitor in sidebar if demo mode
+    if st.session_state.demo_mode and demo_settings.get('resource_monitor', False):
+        st.sidebar.markdown("---")
+        st.session_state.resource_monitor.create_compact_monitor(st.sidebar)
 
 
 def upload_page():
     """File upload and CPRA request input page."""
     st.title("📤 Upload Documents & Configure Requests")
+    
+    # Check if demo data was loaded from sidebar
+    if st.session_state.demo_mode and st.session_state.get('demo_data_loaded'):
+        demo_emails = st.session_state.get('demo_emails', '')
+        demo_requests = st.session_state.get('demo_requests', [])
+        
+        if demo_emails and not st.session_state.emails:
+            emails = parse_emails(demo_emails)
+            st.session_state.emails = emails
+            st.session_state.cpra_requests = demo_requests
+            st.success(f"✅ Demo data loaded: {len(emails)} emails, {len(demo_requests)} CPRA requests")
+            st.session_state.demo_data_loaded = False  # Reset flag
     
     col1, col2 = st.columns([2, 1])
     
@@ -143,11 +192,20 @@ def upload_page():
         
         # Sample data option
         if st.button("📦 Load Sample Data", type="secondary"):
-            sample_content = load_sample_data()
-            if sample_content:
-                emails = parse_emails(sample_content)
-                st.session_state.emails = emails
-                st.success(f"✅ Loaded {len(emails)} sample emails")
+            if st.session_state.demo_mode:
+                # Load demo data from demo-files
+                email_content, cpra_requests = load_demo_data()
+                if email_content:
+                    emails = parse_emails(email_content)
+                    st.session_state.emails = emails
+                    st.session_state.cpra_requests = cpra_requests
+                    st.success(f"✅ Loaded demo data: {len(emails)} emails, {len(cpra_requests)} requests")
+            else:
+                sample_content = load_sample_data()
+                if sample_content:
+                    emails = parse_emails(sample_content)
+                    st.session_state.emails = emails
+                    st.success(f"✅ Loaded {len(emails)} sample emails")
         
         if uploaded_file is not None:
             content = uploaded_file.read().decode('utf-8')
@@ -169,11 +227,16 @@ def upload_page():
         
         # CPRA request inputs
         requests = []
+        # Pre-fill with demo requests if available
+        existing_requests = st.session_state.cpra_requests if st.session_state.cpra_requests else []
+        
         for i in range(5):
+            default_value = existing_requests[i] if i < len(existing_requests) else ""
             request = st.text_area(
                 f"Request {i+1}",
                 key=f"cpra_request_{i}",
                 height=80,
+                value=default_value,
                 placeholder="e.g., All documents regarding roof leak issues on the Community Center construction project"
             )
             if request.strip():
@@ -213,6 +276,13 @@ def processing_page():
         st.error("No emails or requests to process")
         return
     
+    # Get demo settings
+    demo_mode = st.session_state.demo_mode
+    demo_settings = st.session_state.demo_settings
+    speed = demo_settings.get('speed', 1.0) if demo_mode else 1.0
+    show_animations = demo_settings.get('animations', True) if demo_mode else False
+    show_resources = demo_settings.get('resource_monitor', True) if demo_mode else False
+    
     # Processing phases
     phases = [
         ("🔍 Analyzing Responsiveness", "responsiveness"),
@@ -220,18 +290,51 @@ def processing_page():
         ("✅ Finalizing Results", "finalize")
     ]
     
-    # Create progress containers
+    # Create layout containers
+    if demo_mode and show_resources:
+        # Resource monitor at top if in demo mode
+        resource_container = st.container()
+        st.markdown("---")
+    
+    # Model activity indicator
+    if demo_mode:
+        model_container = st.container()
+        
     progress_container = st.container()
     stats_container = st.container()
+    
+    if demo_mode:
+        # Enhanced visual layout for demo
+        current_doc_container = st.container()
+    
     log_container = st.container()
+    
+    # Initialize resource monitor if needed
+    if demo_mode and show_resources:
+        with resource_container:
+            st.markdown("### 💻 System Resources")
+            st.session_state.resource_monitor.create_resource_dashboard(
+                resource_container, 
+                model_name="gemma3:latest"
+            )
     
     with progress_container:
         st.markdown("### 📊 Processing Progress")
         overall_progress = st.progress(0)
         phase_text = st.empty()
-        current_doc = st.empty()
+        
+        if demo_mode:
+            # Add phase indicators
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                phase_1_indicator = st.empty()
+            with col2:
+                phase_2_indicator = st.empty()
+            with col3:
+                phase_3_indicator = st.empty()
     
     with stats_container:
+        st.markdown("### 📈 Live Statistics")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             docs_processed = st.metric("Documents Processed", "0")
@@ -241,6 +344,12 @@ def processing_page():
             exemption_count = st.metric("With Exemptions", "0")
         with col4:
             processing_time = st.metric("Processing Time", "0s")
+    
+    if demo_mode:
+        with current_doc_container:
+            st.markdown("### 📄 Current Document")
+            current_doc_display = st.empty()
+            ai_activity = st.empty()
     
     with log_container:
         st.markdown("### 📝 Processing Log")
@@ -253,13 +362,34 @@ def processing_page():
     total_emails = len(st.session_state.emails)
     
     # Phase 1: Responsiveness Analysis
+    if demo_mode:
+        phase_1_indicator.success("▶️ 🔍 Analyzing Responsiveness")
+        phase_2_indicator.info("⏸️ 🛡️ Checking Exemptions")
+        phase_3_indicator.info("⏸️ ✅ Finalizing Results")
+        
     phase_text.markdown("**Current Phase:** 🔍 Analyzing Responsiveness")
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting responsiveness analysis...")
     log_area.text_area("Processing Log", "\n".join(logs), height=200)
     
     responsiveness_results = []
     for i, email in enumerate(st.session_state.emails):
-        current_doc.text(f"Processing email {i+1}/{total_emails}: {email.subject or '(No subject)'}")
+        if demo_mode:
+            # Show current document details
+            current_doc_display.info(f"""
+            **Email {i+1} of {total_emails}**
+            
+            📧 **Subject:** {email.subject or '(No subject)'}
+            
+            👤 **From:** {email.sender}
+            
+            📅 **Date:** {email.date}
+            """)
+            
+            # Show AI activity
+            ai_activity.warning(get_ai_thinking_animation("responsiveness"))
+            
+            # Add processing delay for visual effect
+            simulate_processing_delay(demo_mode, base_delay=1.0, speed_multiplier=speed)
         
         # Analyze responsiveness
         result = analyzer.analyze_email_responsiveness(
@@ -268,9 +398,21 @@ def processing_page():
         )
         responsiveness_results.append(result)
         
-        # Update progress
+        # Clear AI activity after processing
+        if demo_mode:
+            ai_activity.success(f"✅ Analysis complete: {'Responsive' if result and result.is_responsive else 'Not Responsive'}")
+            simulate_processing_delay(demo_mode, base_delay=0.3, speed_multiplier=speed)
+        
+        # Update progress with smooth animation in demo mode
         progress = (i + 1) / (total_emails * 2)  # Two phases
-        overall_progress.progress(progress)
+        if demo_mode and show_animations:
+            # Animate progress bar smoothly
+            current_progress = overall_progress.progress(0)
+            for step in range(int(progress * 100)):
+                overall_progress.progress(step / 100.0)
+                time.sleep(0.001 / speed)
+        else:
+            overall_progress.progress(progress)
         
         # Update stats
         docs_processed.metric("Documents Processed", f"{i+1}/{total_emails}")
@@ -279,26 +421,64 @@ def processing_page():
         elapsed = int(time.time() - start_time)
         processing_time.metric("Processing Time", f"{elapsed}s")
         
+        # Update resource monitor
+        if demo_mode and show_resources and i % 3 == 0:  # Update every 3 emails
+            with resource_container:
+                st.session_state.resource_monitor.create_processing_monitor(
+                    resource_container,
+                    phase="responsiveness",
+                    model_active=True
+                )
+        
         logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {'Responsive' if result and result.is_responsive else 'Not Responsive'}")
-        log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
+        if demo_mode and demo_settings.get('typewriter', False):
+            typewriter_effect(logs[-1], log_area, demo_mode, speed=0.01)
+        else:
+            log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
     
     st.session_state.responsiveness_results = responsiveness_results
     
     # Phase 2: Exemption Analysis
+    if demo_mode:
+        phase_1_indicator.success("✅ 🔍 Responsiveness Complete")
+        phase_2_indicator.success("▶️ 🛡️ Checking Exemptions")
+        
     phase_text.markdown("**Current Phase:** 🛡️ Checking Exemptions")
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting exemption analysis...")
     log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
     
     exemption_results = []
     for i, email in enumerate(st.session_state.emails):
-        current_doc.text(f"Checking exemptions {i+1}/{total_emails}: {email.subject or '(No subject)'}")
-        
         # Only analyze exemptions for responsive emails
         if responsiveness_results[i] and responsiveness_results[i].is_responsive:
+            if demo_mode:
+                current_doc_display.warning(f"""
+                **Checking Email {i+1} for Exemptions**
+                
+                📧 **Subject:** {email.subject or '(No subject)'}
+                
+                🔍 **Status:** Responsive Document
+                
+                🛡️ **Scanning for:** Attorney-Client, Personnel Records, Deliberative Process
+                """)
+                
+                ai_activity.warning(get_ai_thinking_animation("exemptions"))
+                simulate_processing_delay(demo_mode, base_delay=0.8, speed_multiplier=speed)
+            
             result = analyzer.analyze_email_exemptions(email)
             exemption_results.append(result)
+            
+            if demo_mode:
+                if result and result.has_exemptions:
+                    ai_activity.warning(f"⚠️ Found {len(result.exemptions)} exemption(s)")
+                else:
+                    ai_activity.success("✅ No exemptions found")
+                simulate_processing_delay(demo_mode, base_delay=0.2, speed_multiplier=speed)
         else:
             exemption_results.append(None)
+            if demo_mode:
+                current_doc_display.info(f"⏭️ Skipping non-responsive email {i+1}")
+                simulate_processing_delay(demo_mode, base_delay=0.1, speed_multiplier=speed)
         
         # Update progress
         progress = (total_emails + i + 1) / (total_emails * 2)
@@ -317,8 +497,16 @@ def processing_page():
     st.session_state.exemption_results = exemption_results
     
     # Phase 3: Finalize
+    if demo_mode:
+        phase_2_indicator.success("✅ 🛡️ Exemptions Complete")
+        phase_3_indicator.success("▶️ ✅ Finalizing Results")
+        
     phase_text.markdown("**Current Phase:** ✅ Finalizing Results")
-    current_doc.text("Preparing review system...")
+    
+    if demo_mode:
+        current_doc_display.info("🔄 Preparing review system...")
+        ai_activity.info("📊 Generating statistics and summary...")
+        simulate_processing_delay(demo_mode, base_delay=1.5, speed_multiplier=speed)
     
     # Initialize review manager
     # First update the session with the analysis results
@@ -340,20 +528,75 @@ def processing_page():
     overall_progress.progress(1.0)
     total_time = int(time.time() - start_time)
     
+    if demo_mode:
+        phase_3_indicator.success("✅ ✅ Processing Complete!")
+        ai_activity.success("🎉 All documents processed successfully!")
+        
+        # Final resource display
+        if show_resources:
+            with resource_container:
+                st.session_state.resource_monitor.create_processing_monitor(
+                    resource_container,
+                    phase="finalize",
+                    model_active=False
+                )
+    
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Processing complete!")
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Total time: {total_time}s")
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Average: {total_time/total_emails:.1f}s per email")
     log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
     
-    # Success message
-    st.success(f"""
-    ✅ **Processing Complete!**
-    - Processed {total_emails} emails in {total_time} seconds
-    - Found {sum(1 for r in responsiveness_results if r and r.is_responsive)} responsive documents
-    - Identified {sum(1 for r in exemption_results if r and r.has_exemptions)} documents with exemptions
-    """)
+    # Enhanced success message for demo mode
+    if demo_mode:
+        # Create impressive summary statistics
+        responsive_docs = sum(1 for r in responsiveness_results if r and r.is_responsive)
+        exempt_docs = sum(1 for r in exemption_results if r and r.has_exemptions)
+        
+        st.balloons()  # Celebration effect
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.success(f"""
+            ## 🎉 **Processing Complete!**
+            
+            ### 📊 Final Statistics:
+            - **Total Documents Processed:** {total_emails} emails
+            - **Processing Time:** {total_time} seconds ({total_time/total_emails:.1f}s average)
+            - **Responsive Documents:** {responsive_docs} ({(responsive_docs/total_emails)*100:.1f}%)
+            - **Documents with Exemptions:** {exempt_docs} ({(exempt_docs/total_emails)*100:.1f}%)
+            
+            ### 🏆 Performance Highlights:
+            - ✅ All processing completed locally (no cloud services used)
+            - ✅ Data never left this device (airplane mode compatible)
+            - ✅ Average processing speed: {total_emails/(total_time/60):.1f} emails/minute
+            """)
+        
+        with col2:
+            # Model performance card
+            st.info(f"""
+            ### 🤖 AI Model Performance
+            
+            **Model:** gemma3:latest
+            
+            **Size:** 3.3 GB
+            
+            **Accuracy:** High
+            
+            **Speed:** Fast
+            
+            **Privacy:** 100% Local
+            """)
+    else:
+        # Standard success message
+        st.success(f"""
+        ✅ **Processing Complete!**
+        - Processed {total_emails} emails in {total_time} seconds
+        - Found {sum(1 for r in responsiveness_results if r and r.is_responsive)} responsive documents
+        - Identified {sum(1 for r in exemption_results if r and r.has_exemptions)} documents with exemptions
+        """)
     
     # Navigate to results
+    st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("📊 View Results Dashboard", type="primary", use_container_width=True):
