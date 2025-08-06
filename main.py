@@ -239,7 +239,7 @@ def sidebar_navigation():
         st.sidebar.text(f"Requests: {len(st.session_state.cpra_requests)}")
         
         if st.session_state.processing_complete:
-            responsive_count = sum(1 for r in st.session_state.responsiveness_results if r and r.is_responsive)
+            responsive_count = sum(1 for r in st.session_state.responsiveness_results if r and r.is_responsive_to_any())
             st.sidebar.text(f"Responsive: {responsive_count}")
             
             if st.session_state.review_manager:
@@ -547,7 +547,7 @@ def processing_page():
         
         # Clear AI activity after processing
         if demo_mode:
-            ai_activity.success(f"✅ Analysis complete: {'Responsive' if result and result.is_responsive else 'Not Responsive'}")
+            ai_activity.success(f"✅ Analysis complete: {'Responsive' if result and result.is_responsive_to_any() else 'Not Responsive'}")
             simulate_processing_delay(demo_mode, base_delay=0.3, speed_multiplier=speed)
         
         # Update progress with smooth animation in demo mode
@@ -563,7 +563,7 @@ def processing_page():
         
         # Update stats
         docs_processed.metric("Documents Processed", f"{i+1}/{total_emails}")
-        responsive_so_far = sum(1 for r in responsiveness_results if r and r.is_responsive)
+        responsive_so_far = sum(1 for r in responsiveness_results if r and r.is_responsive_to_any())
         responsive_count.metric("Responsive", str(responsive_so_far))
         elapsed = int(time.time() - start_time)
         processing_time.metric("Processing Time", f"{elapsed}s")
@@ -577,7 +577,7 @@ def processing_page():
                     model_active=True
                 )
         
-        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {'Responsive' if result and result.is_responsive else 'Not Responsive'}")
+        logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {'Responsive' if result and result.is_responsive_to_any() else 'Not Responsive'}")
         if demo_mode and demo_settings.get('typewriter', False):
             typewriter_effect(logs[-1], log_area, demo_mode, speed=0.01)
         else:
@@ -597,7 +597,7 @@ def processing_page():
     exemption_results = []
     for i, email in enumerate(st.session_state.emails):
         # Only analyze exemptions for responsive emails
-        if responsiveness_results[i] and responsiveness_results[i].is_responsive:
+        if responsiveness_results[i] and responsiveness_results[i].is_responsive_to_any():
             if demo_mode:
                 current_doc_display.warning(f"""
                 **Checking Email {i+1} for Exemptions**
@@ -720,7 +720,7 @@ def processing_page():
     # Enhanced success message for demo mode
     if demo_mode:
         # Create impressive summary statistics
-        responsive_docs = sum(1 for r in responsiveness_results if r and r.is_responsive)
+        responsive_docs = sum(1 for r in responsiveness_results if r and r.is_responsive_to_any())
         exempt_docs = sum(1 for r in exemption_results if r and r.has_exemptions)
         
         st.balloons()  # Celebration effect
@@ -762,7 +762,7 @@ def processing_page():
         st.success(f"""
         ✅ **Processing Complete!**
         - Processed {total_emails} emails in {total_time} seconds
-        - Found {sum(1 for r in responsiveness_results if r and r.is_responsive)} responsive documents
+        - Found {sum(1 for r in responsiveness_results if r and r.is_responsive_to_any())} responsive documents
         - Identified {sum(1 for r in exemption_results if r and r.has_exemptions)} documents with exemptions
         """)
     
@@ -789,9 +789,9 @@ def results_dashboard():
     
     total_emails = len(st.session_state.emails)
     responsive_emails = [i for i, r in enumerate(st.session_state.responsiveness_results) 
-                        if r and r.is_responsive]
+                        if r and r.is_responsive_to_any()]
     non_responsive_emails = [i for i, r in enumerate(st.session_state.responsiveness_results)
-                             if not r or not r.is_responsive]
+                             if not r or not r.is_responsive_to_any()]
     exemption_emails = [i for i, r in enumerate(st.session_state.exemption_results)
                        if r and r.has_exemptions]
     
@@ -983,7 +983,7 @@ def review_page():
             # Responsiveness analysis
             st.markdown("#### Responsiveness")
             if responsiveness:
-                if responsiveness.is_responsive:
+                if responsiveness.is_responsive_to_any():
                     st.success(f"✅ Responsive to request(s): {', '.join(map(str, responsiveness.responsive_to_requests))}")
                 else:
                     st.info("❌ Not responsive")
@@ -1013,7 +1013,7 @@ def review_page():
             # Responsiveness override
             is_responsive = st.checkbox(
                 "Document is responsive",
-                value=current_review.final_responsiveness if current_review else (responsiveness.is_responsive if responsiveness else False),
+                value=current_review.final_responsiveness if current_review else (responsiveness.is_responsive_to_any() if responsiveness else False),
                 key=f"responsive_{current_idx}"
             )
             
@@ -1122,7 +1122,7 @@ def export_page():
             responsiveness = st.session_state.responsiveness_results[i] if i < len(st.session_state.responsiveness_results) else None
             exemptions = st.session_state.exemption_results[i] if i < len(st.session_state.exemption_results) else None
             final_determinations.append({
-                'responsive': responsiveness.is_responsive if responsiveness else False,
+                'responsive': responsiveness.is_responsive_to_any() if responsiveness else False,
                 'exemptions': {ex.exemption_type: ex.reasoning for ex in exemptions.exemptions} if exemptions and exemptions.exemptions else {}
             })
     
