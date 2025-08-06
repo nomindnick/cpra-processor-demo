@@ -318,24 +318,19 @@ def upload_page():
         
         # Sample data option
         if st.button("📦 Load Sample Data", type="secondary"):
-            if st.session_state.demo_mode:
-                # Load demo data from demo-files
-                email_content, cpra_requests = load_demo_data()
-                if email_content:
-                    emails = parse_emails(email_content)
-                    st.session_state.emails = emails
-                    # Convert string requests to CPRARequest objects
-                    st.session_state.cpra_requests = [
-                        CPRARequest(text=req, request_id=f"request_{i}")
-                        for i, req in enumerate(cpra_requests)
-                    ]
-                    st.success(f"✅ Loaded demo data: {len(emails)} emails, {len(cpra_requests)} requests")
+            # Always load demo data (it's better than the old sample data)
+            email_content, cpra_requests = load_demo_data()
+            if email_content:
+                emails = parse_emails(email_content)
+                st.session_state.emails = emails
+                # Convert string requests to CPRARequest objects
+                st.session_state.cpra_requests = [
+                    CPRARequest(text=req, request_id=f"request_{i}")
+                    for i, req in enumerate(cpra_requests)
+                ]
+                st.success(f"✅ Loaded demo data: {len(emails)} emails, {len(cpra_requests)} requests")
             else:
-                sample_content = load_sample_data()
-                if sample_content:
-                    emails = parse_emails(sample_content)
-                    st.session_state.emails = emails
-                    st.success(f"✅ Loaded {len(emails)} sample emails")
+                st.error("Demo data not found. Please ensure demo-files directory exists.")
         
         if uploaded_file is not None:
             content = uploaded_file.read().decode('utf-8')
@@ -388,8 +383,8 @@ def upload_page():
         if st.session_state.emails and st.session_state.cpra_requests:
             if st.button("🚀 Start Processing", type="primary", use_container_width=True):
                 # Initialize session
-                from src.utils.data_structures import CPRARequest
-                cpra_request_objs = [CPRARequest(text=req) for req in st.session_state.cpra_requests]
+                # CPRARequest already imported at module level
+                cpra_request_objs = st.session_state.cpra_requests  # Already CPRARequest objects now
                 session = ProcessingSession(
                     session_id=datetime.now().strftime("%Y%m%d_%H%M%S"),
                     cpra_requests=cpra_request_objs,
