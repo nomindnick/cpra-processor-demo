@@ -45,6 +45,7 @@ from src.components.resource_monitor import (
     ResourceMonitor, create_performance_gauge,
     create_model_comparison_chart
 )
+from src.styles.custom_styles import apply_custom_styling
 
 # Initialize configuration
 config = get_config()
@@ -131,7 +132,7 @@ def parse_emails(content: str) -> List[Email]:
 
 def sidebar_navigation():
     """Create sidebar navigation."""
-    st.sidebar.title("🏛️ CPRA Processing")
+    st.sidebar.title("CPRA Processing")
     
     # Network status indicator at top
     is_connected, network_msg = check_network_connectivity()
@@ -144,11 +145,11 @@ def sidebar_navigation():
     
     # Navigation menu
     pages = {
-        'upload': '📤 Upload & Configure',
-        'processing': '⚙️ Processing',
-        'results': '📊 Results Dashboard',
-        'review': '👁️ Document Review',
-        'export': '📥 Export Documents'
+        'upload': 'Upload & Configure',
+        'processing': 'Processing',
+        'results': 'Results Dashboard',
+        'review': 'Document Review',
+        'export': 'Export Documents'
     }
     
     # Show navigation based on current state
@@ -170,7 +171,7 @@ def sidebar_navigation():
     # Session info
     if st.session_state.session:
         st.sidebar.markdown("---")
-        st.sidebar.markdown("### 📋 Session Info")
+        st.sidebar.markdown("### Session Information")
         st.sidebar.text(f"ID: {st.session_state.session.session_id[:8]}...")
         st.sidebar.text(f"Emails: {len(st.session_state.emails)}")
         st.sidebar.text(f"Requests: {len(st.session_state.cpra_requests)}")
@@ -198,7 +199,7 @@ def sidebar_navigation():
 
 def upload_page():
     """File upload and CPRA request input page."""
-    st.title("📤 Upload Documents & Configure Requests")
+    st.title("Upload Documents & Configure Requests")
     
     # Check if demo data was loaded from sidebar
     if st.session_state.demo_mode and st.session_state.get('demo_data_loaded'):
@@ -209,13 +210,13 @@ def upload_page():
             emails = parse_emails(demo_emails)
             st.session_state.emails = emails
             st.session_state.cpra_requests = demo_requests
-            st.success(f"✅ Demo data loaded: {len(emails)} emails, {len(demo_requests)} CPRA requests")
+            st.success(f"Demo data loaded: {len(emails)} emails, {len(demo_requests)} CPRA requests")
             st.session_state.demo_data_loaded = False  # Reset flag
     
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("### 📧 Email Upload")
+        st.markdown("### Email Upload")
         
         # File uploader
         uploaded_file = st.file_uploader(
@@ -225,7 +226,7 @@ def upload_page():
         )
         
         # Sample data option
-        if st.button("📦 Load Sample Data", type="secondary"):
+        if st.button("Load Sample Data", type="secondary"):
             # Always load demo data (it's better than the old sample data)
             email_content, cpra_requests = load_demo_data()
             if email_content:
@@ -236,7 +237,7 @@ def upload_page():
                     CPRARequest(text=req, request_id=f"request_{i}")
                     for i, req in enumerate(cpra_requests)
                 ]
-                st.success(f"✅ Loaded demo data: {len(emails)} emails, {len(cpra_requests)} requests")
+                st.success(f"Loaded demo data: {len(emails)} emails, {len(cpra_requests)} requests")
             else:
                 st.error("Demo data not found. Please ensure demo-files directory exists.")
         
@@ -246,20 +247,20 @@ def upload_page():
             if content and 'From:' in content:
                 emails = parse_emails(content)
                 st.session_state.emails = emails
-                st.success(f"✅ Parsed {len(emails)} emails from uploaded file")
+                st.success(f"Parsed {len(emails)} emails from uploaded file")
             else:
                 st.error("Uploaded file doesn't appear to contain emails in the expected format")
         
         # Display parsed emails
         if st.session_state.emails:
-            st.markdown("### 📋 Parsed Emails")
+            st.markdown("### Parsed Emails")
             with st.expander(f"View {len(st.session_state.emails)} emails"):
                 for i, email in enumerate(st.session_state.emails, 1):
                     st.markdown(f"**{i}.** {email.subject or '(No subject)'}")
                     st.caption(f"From: {email.from_address} | Date: {email.date}")
     
     with col2:
-        st.markdown("### 📝 CPRA Requests")
+        st.markdown("### CPRA Requests")
         st.info("Enter up to 5 CPRA requests that describe the documents you're looking for")
         
         # CPRA request inputs
@@ -290,14 +291,14 @@ def upload_page():
         ]
         
         if requests:
-            st.success(f"✅ {len(requests)} CPRA request(s) configured")
+            st.success(f"{len(requests)} CPRA request(s) configured")
     
     # Start processing button
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.session_state.emails and st.session_state.cpra_requests:
-            if st.button("🚀 Start Processing", type="primary", use_container_width=True):
+            if st.button("Start Processing", type="primary", use_container_width=True):
                 # Initialize session
                 # CPRARequest already imported at module level
                 cpra_request_objs = st.session_state.cpra_requests  # Already CPRARequest objects now
@@ -310,12 +311,12 @@ def upload_page():
                 st.session_state.page = 'processing'
                 st.rerun()
         else:
-            st.warning("⚠️ Please upload emails and enter at least one CPRA request")
+            st.warning("Please upload emails and enter at least one CPRA request")
 
 
 def processing_page():
     """Processing page with real-time progress indicators."""
-    st.title("⚙️ Processing Documents")
+    st.title("Processing Documents")
     
     if not st.session_state.emails or not st.session_state.cpra_requests:
         st.error("No emails or requests to process")
@@ -323,15 +324,15 @@ def processing_page():
     
     # Check if processing is already complete
     if st.session_state.processing_complete:
-        st.success("✅ Processing already complete!")
+        st.success("Processing already complete!")
         st.info("Navigate to Results Dashboard or Document Review to view results.")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📊 View Results", type="primary", use_container_width=True):
+            if st.button("View Results", type="primary", use_container_width=True):
                 st.session_state.page = 'results'
                 st.rerun()
         with col2:
-            if st.button("👁️ Review Documents", use_container_width=True):
+            if st.button("Review Documents", use_container_width=True):
                 st.session_state.page = 'review'
                 st.rerun()
         return
@@ -345,9 +346,9 @@ def processing_page():
     
     # Processing phases
     phases = [
-        ("🔍 Analyzing Responsiveness", "responsiveness"),
-        ("🛡️ Checking Exemptions", "exemptions"),
-        ("✅ Finalizing Results", "finalize")
+        ("Analyzing Responsiveness", "responsiveness"),
+        ("Checking Exemptions", "exemptions"),
+        ("Finalizing Results", "finalize")
     ]
     
     # Create layout containers
@@ -372,14 +373,14 @@ def processing_page():
     # Initialize resource monitor if needed
     if demo_mode and show_resources:
         with resource_container:
-            st.markdown("### 💻 System Resources")
+            st.markdown("### System Resources")
             st.session_state.resource_monitor.create_resource_dashboard(
                 resource_container, 
                 model_name="gemma3:latest"
             )
     
     with progress_container:
-        st.markdown("### 📊 Processing Progress")
+        st.markdown("### Processing Progress")
         overall_progress = st.progress(0)
         phase_text = st.empty()
         
@@ -394,7 +395,7 @@ def processing_page():
                 phase_3_indicator = st.empty()
     
     with stats_container:
-        st.markdown("### 📈 Live Statistics")
+        st.markdown("### Live Statistics")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             docs_processed = st.metric("Documents Processed", "0")
@@ -407,12 +408,12 @@ def processing_page():
     
     if demo_mode:
         with current_doc_container:
-            st.markdown("### 📄 Current Document")
+            st.markdown("### Current Document")
             current_doc_display = st.empty()
             ai_activity = st.empty()
     
     with log_container:
-        st.markdown("### 📝 Processing Log")
+        st.markdown("### Processing Log")
         log_area = st.empty()
         logs = []
     
@@ -421,7 +422,7 @@ def processing_page():
     try:
         analyzer = CPRAAnalyzer(model_name=config.model.responsiveness_model)
     except Exception as e:
-        st.error(f"❌ Failed to initialize analyzer: {str(e)}")
+        st.error(f"Failed to initialize analyzer: {str(e)}")
         logger.error(f"Analyzer initialization failed: {e}")
         st.stop()
     
@@ -430,11 +431,11 @@ def processing_page():
     
     # Phase 1: Responsiveness Analysis
     if demo_mode:
-        phase_1_indicator.success("▶️ 🔍 Analyzing Responsiveness")
-        phase_2_indicator.info("⏸️ 🛡️ Checking Exemptions")
-        phase_3_indicator.info("⏸️ ✅ Finalizing Results")
+        phase_1_indicator.success("▶ Analyzing Responsiveness")
+        phase_2_indicator.info("Checking Exemptions")
+        phase_3_indicator.info("Finalizing Results")
         
-    phase_text.markdown("**Current Phase:** 🔍 Analyzing Responsiveness")
+    phase_text.markdown("**Current Phase:** Analyzing Responsiveness")
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting responsiveness analysis...")
     log_area.text_area("Processing Log", "\n".join(logs), height=200)
     
@@ -445,11 +446,11 @@ def processing_page():
             current_doc_display.info(f"""
             **Email {i+1} of {total_emails}**
             
-            📧 **Subject:** {email.subject or '(No subject)'}
+            **Subject:** {email.subject or '(No subject)'}
             
-            👤 **From:** {email.from_address}
+            **From:** {email.from_address}
             
-            📅 **Date:** {email.date}
+            **Date:** {email.date}
             """)
             
             # Show AI activity
@@ -470,7 +471,7 @@ def processing_page():
             errors_encountered.append(f"Email {i+1}: {str(e)}")
             # Create failed result
             responsiveness_results.append(None)
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error processing email {i+1}")
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}]  Error processing email {i+1}")
         
         # Auto-save session periodically
         if (i + 1) % config.processing.auto_save_interval == 0:
@@ -478,7 +479,7 @@ def processing_page():
         
         # Clear AI activity after processing
         if demo_mode:
-            ai_activity.success(f"✅ Analysis complete: {'Responsive' if result and result.is_responsive_to_any() else 'Not Responsive'}")
+            ai_activity.success(f" Analysis complete: {'Responsive' if result and result.is_responsive_to_any() else 'Not Responsive'}")
             simulate_processing_delay(demo_mode, base_delay=0.3, speed_multiplier=speed)
         
         # Update progress with smooth animation in demo mode
@@ -518,10 +519,10 @@ def processing_page():
     
     # Phase 2: Exemption Analysis
     if demo_mode:
-        phase_1_indicator.success("✅ 🔍 Responsiveness Complete")
-        phase_2_indicator.success("▶️ 🛡️ Checking Exemptions")
+        phase_1_indicator.success("  Responsiveness Complete")
+        phase_2_indicator.success("▶  Checking Exemptions")
         
-    phase_text.markdown("**Current Phase:** 🛡️ Checking Exemptions")
+    phase_text.markdown("**Current Phase:**  Checking Exemptions")
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting exemption analysis...")
     log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
     
@@ -533,11 +534,11 @@ def processing_page():
                 current_doc_display.warning(f"""
                 **Checking Email {i+1} for Exemptions**
                 
-                📧 **Subject:** {email.subject or '(No subject)'}
+                **Subject:** {email.subject or '(No subject)'}
                 
-                🔍 **Status:** Responsive Document
+                **Status:** Responsive Document
                 
-                🛡️ **Scanning for:** Attorney-Client, Personnel Records, Deliberative Process
+                **Scanning for:** Attorney-Client, Personnel Records, Deliberative Process
                 """)
                 
                 ai_activity.warning(get_ai_thinking_animation("exemptions"))
@@ -550,18 +551,18 @@ def processing_page():
                 logger.error(f"Error analyzing exemptions for email {i+1}: {e}")
                 errors_encountered.append(f"Exemption analysis for email {i+1}: {str(e)}")
                 exemption_results.append(None)
-                logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error checking exemptions for email {i+1}")
+                logs.append(f"[{datetime.now().strftime('%H:%M:%S')}]  Error checking exemptions for email {i+1}")
             
             if demo_mode:
                 if result and result.has_any_exemption():
-                    ai_activity.warning(f"⚠️ Found {len(result.exemptions)} exemption(s)")
+                    ai_activity.warning(f" Found {len(result.exemptions)} exemption(s)")
                 else:
-                    ai_activity.success("✅ No exemptions found")
+                    ai_activity.success(" No exemptions found")
                 simulate_processing_delay(demo_mode, base_delay=0.2, speed_multiplier=speed)
         else:
             exemption_results.append(None)
             if demo_mode:
-                current_doc_display.info(f"⏭️ Skipping non-responsive email {i+1}")
+                current_doc_display.info(f" Skipping non-responsive email {i+1}")
                 simulate_processing_delay(demo_mode, base_delay=0.1, speed_multiplier=speed)
         
         # Update progress
@@ -582,14 +583,14 @@ def processing_page():
     
     # Phase 3: Finalize
     if demo_mode:
-        phase_2_indicator.success("✅ 🛡️ Exemptions Complete")
-        phase_3_indicator.success("▶️ ✅ Finalizing Results")
+        phase_2_indicator.success("  Exemptions Complete")
+        phase_3_indicator.success("▶  Finalizing Results")
         
-    phase_text.markdown("**Current Phase:** ✅ Finalizing Results")
+    phase_text.markdown("**Current Phase:**  Finalizing Results")
     
     if demo_mode:
-        current_doc_display.info("🔄 Preparing review system...")
-        ai_activity.info("📊 Generating statistics and summary...")
+        current_doc_display.info(" Preparing review system...")
+        ai_activity.info(" Generating statistics and summary...")
         simulate_processing_delay(demo_mode, base_delay=1.5, speed_multiplier=speed)
     
     # Initialize review manager with error handling
@@ -612,25 +613,25 @@ def processing_page():
         
     except Exception as e:
         logger.error(f"Error initializing review manager: {e}")
-        st.error(f"❌ Failed to initialize review system: {str(e)}")
+        st.error(f" Failed to initialize review system: {str(e)}")
         errors_encountered.append(f"Review system initialization: {str(e)}")
     
     # Show error summary if any errors occurred
     if errors_encountered:
-        st.warning(f"⚠️ Processing completed with {len(errors_encountered)} error(s)")
+        st.warning(f" Processing completed with {len(errors_encountered)} error(s)")
         with st.expander("View error details"):
             for error in errors_encountered:
                 st.text(error)
     else:
-        st.success("✅ Processing completed successfully!")
+        st.success(" Processing completed successfully!")
     
     # Final stats
     overall_progress.progress(1.0)
     total_time = int(time.time() - start_time)
     
     if demo_mode:
-        phase_3_indicator.success("✅ ✅ Processing Complete!")
-        ai_activity.success("🎉 All documents processed successfully!")
+        phase_3_indicator.success("  Processing Complete!")
+        ai_activity.success(" All documents processed successfully!")
         
         # Final resource display
         if show_resources:
@@ -657,24 +658,24 @@ def processing_page():
         col1, col2 = st.columns([2, 1])
         with col1:
             st.success(f"""
-            ## 🎉 **Processing Complete!**
+            ##  **Processing Complete!**
             
-            ### 📊 Final Statistics:
+            ###  Final Statistics:
             - **Total Documents Processed:** {total_emails} emails
             - **Processing Time:** {total_time} seconds ({total_time/total_emails:.1f}s average)
             - **Responsive Documents:** {responsive_docs} ({(responsive_docs/total_emails)*100:.1f}%)
             - **Documents with Exemptions:** {exempt_docs} ({(exempt_docs/total_emails)*100:.1f}%)
             
-            ### 🏆 Performance Highlights:
-            - ✅ All processing completed locally (no cloud services used)
-            - ✅ Data never left this device (airplane mode compatible)
-            - ✅ Average processing speed: {total_emails/(total_time/60):.1f} emails/minute
+            ###  Performance Highlights:
+            -  All processing completed locally (no cloud services used)
+            -  Data never left this device (airplane mode compatible)
+            -  Average processing speed: {total_emails/(total_time/60):.1f} emails/minute
             """)
         
         with col2:
             # Model performance card
             st.info(f"""
-            ### 🤖 AI Model Performance
+            ###  AI Model Performance
             
             **Model:** gemma3:latest
             
@@ -689,7 +690,7 @@ def processing_page():
     else:
         # Standard success message
         st.success(f"""
-        ✅ **Processing Complete!**
+         **Processing Complete!**
         - Processed {total_emails} emails in {total_time} seconds
         - Found {sum(1 for r in responsiveness_results if r and r.is_responsive_to_any())} responsive documents
         - Identified {sum(1 for r in exemption_results if r and r.has_any_exemption())} documents with exemptions
@@ -699,21 +700,21 @@ def processing_page():
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("📊 View Results Dashboard", type="primary", use_container_width=True):
+        if st.button(" View Results Dashboard", type="primary", use_container_width=True):
             st.session_state.page = 'results'
             st.rerun()
 
 
 def results_dashboard():
     """Results dashboard with document grouping and statistics."""
-    st.title("📊 Results Dashboard")
+    st.title(" Results Dashboard")
     
     if not st.session_state.processing_complete:
         st.error("Processing not complete")
         return
     
     # Summary statistics
-    st.markdown("### 📈 Processing Summary")
+    st.markdown("###  Processing Summary")
     col1, col2, col3, col4 = st.columns(4)
     
     total_emails = len(st.session_state.emails)
@@ -735,13 +736,13 @@ def results_dashboard():
     
     # Document groupings
     st.markdown("---")
-    st.markdown("### 📁 Document Groups")
+    st.markdown("### Document Groups")
     
     tab1, tab2, tab3, tab4 = st.tabs([
-        f"✅ Responsive ({len(responsive_emails)})",
-        f"❌ Non-Responsive ({len(non_responsive_emails)})",
-        f"🛡️ With Exemptions ({len(exemption_emails)})",
-        "📊 By Confidence"
+        f" Responsive ({len(responsive_emails)})",
+        f" Non-Responsive ({len(non_responsive_emails)})",
+        f" With Exemptions ({len(exemption_emails)})",
+        " By Confidence"
     ])
     
     with tab1:
@@ -751,7 +752,7 @@ def results_dashboard():
                 email = st.session_state.emails[idx]
                 result = st.session_state.responsiveness_results[idx]
                 
-                with st.expander(f"📧 {email.subject or '(No subject)'}"):
+                with st.expander(f"{email.subject or '(No subject)'}"):
                     col1, col2 = st.columns([2, 1])
                     with col1:
                         st.markdown(f"**From:** {email.from_address}")
@@ -772,7 +773,7 @@ def results_dashboard():
             for idx in non_responsive_emails:
                 email = st.session_state.emails[idx]
                 
-                with st.expander(f"📧 {email.subject or '(No subject)'}"):
+                with st.expander(f"{email.subject or '(No subject)'}"):
                     st.markdown(f"**From:** {email.from_address}")
                     st.markdown(f"**Date:** {email.date}")
                     st.markdown("**Status:** Not responsive to any CPRA request")
@@ -786,7 +787,7 @@ def results_dashboard():
                 email = st.session_state.emails[idx]
                 exemption_result = st.session_state.exemption_results[idx]
                 
-                with st.expander(f"📧 {email.subject or '(No subject)'}"):
+                with st.expander(f"{email.subject or '(No subject)'}"):
                     st.markdown(f"**From:** {email.from_address}")
                     st.markdown(f"**Date:** {email.date}")
                     st.markdown("**Exemptions:**")
@@ -854,14 +855,14 @@ def results_dashboard():
     st.markdown("---")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("👁️ Start Document Review", type="primary", use_container_width=True):
+        if st.button(" Start Document Review", type="primary", use_container_width=True):
             st.session_state.page = 'review'
             st.rerun()
 
 
 def review_page():
     """Document review interface."""
-    st.title("👁️ Document Review")
+    st.title(" Document Review")
     
     if not st.session_state.processing_complete or not st.session_state.review_manager:
         st.error("Processing not complete or review system not initialized")
@@ -881,7 +882,7 @@ def review_page():
     # Navigation
     col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
-        if st.button("⬅️ Previous", disabled=current_idx <= 0):
+        if st.button("← Previous", disabled=current_idx <= 0):
             st.session_state.current_review_index = max(0, current_idx - 1)
             st.rerun()
     
@@ -889,7 +890,7 @@ def review_page():
         st.markdown(f"### Document {current_idx + 1} of {len(emails)}")
     
     with col3:
-        if st.button("Next ➡️", disabled=current_idx >= len(emails) - 1):
+        if st.button("Next →", disabled=current_idx >= len(emails) - 1):
             st.session_state.current_review_index = min(len(emails) - 1, current_idx + 1)
             st.rerun()
     
@@ -905,7 +906,7 @@ def review_page():
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            st.markdown("### 📧 Email Content")
+            st.markdown("###  Email Content")
             
             # Email metadata
             st.markdown(f"**Subject:** {email.subject or '(No subject)'}")
@@ -918,15 +919,15 @@ def review_page():
             st.text_area("Email Body", email.body, height=300, disabled=True)
         
         with col2:
-            st.markdown("### 🤖 AI Analysis")
+            st.markdown("###  AI Analysis")
             
             # Responsiveness analysis
             st.markdown("#### Responsiveness")
             if responsiveness:
                 if responsiveness.is_responsive_to_any():
-                    st.success(f"✅ Responsive to request(s): {', '.join(map(str, [i+1 for i in responsiveness.get_responsive_requests()]))}")
+                    st.success(f" Responsive to request(s): {', '.join(map(str, [i+1 for i in responsiveness.get_responsive_requests()]))}")
                 else:
-                    st.info("❌ Not responsive")
+                    st.info(" Not responsive")
                 st.caption(f"Confidence: {responsiveness.confidence}")
                 st.caption(f"Reasoning: {responsiveness.reasoning}")
             else:
@@ -939,26 +940,26 @@ def review_page():
                 for exemption_type in applicable_exemptions:
                     if exemption_type == ExemptionType.ATTORNEY_CLIENT:
                         ex_data = exemptions.attorney_client
-                        st.warning(f"🛡️ Attorney-Client Privilege")
+                        st.warning(f" Attorney-Client Privilege")
                         st.caption(f"Confidence: {ex_data['confidence'].value}")
                         st.caption(f"Reasoning: {ex_data['reasoning']}")
                     elif exemption_type == ExemptionType.PERSONNEL:
                         ex_data = exemptions.personnel
-                        st.warning(f"🛡️ Personnel Records")
+                        st.warning(f" Personnel Records")
                         st.caption(f"Confidence: {ex_data['confidence'].value}")
                         st.caption(f"Reasoning: {ex_data['reasoning']}")
                     elif exemption_type == ExemptionType.DELIBERATIVE:
                         ex_data = exemptions.deliberative
-                        st.warning(f"🛡️ Deliberative Process")
+                        st.warning(f" Deliberative Process")
                         st.caption(f"Confidence: {ex_data['confidence'].value}")
                         st.caption(f"Reasoning: {ex_data['reasoning']}")
             else:
-                st.success("✅ No exemptions identified")
+                st.success(" No exemptions identified")
             
             st.markdown("---")
             
             # Review controls
-            st.markdown("### ✏️ Review Decision")
+            st.markdown("###  Review Decision")
             
             # Get current review state
             # Use the same email_id format as the review manager
@@ -1004,7 +1005,7 @@ def review_page():
             exemption_overrides[ExemptionType.DELIBERATIVE] = deliberative
             
             # Save review button
-            if st.button("💾 Save Review", type="primary", use_container_width=True):
+            if st.button(" Save Review", type="primary", use_container_width=True):
                 # Get or ensure current review exists
                 if not current_review:
                     # Create a new review if it doesn't exist
@@ -1038,7 +1039,7 @@ def review_page():
                         exemption_analysis=exemptions
                     )
                 
-                st.success("✅ Review saved!")
+                st.success(" Review saved!")
                 
                 # Auto-advance to next document
                 if current_idx < len(emails) - 1:
@@ -1049,18 +1050,18 @@ def review_page():
     summary = review_manager.get_review_summary(st.session_state.session)
     if summary['review_status']['completed'] == summary['total_documents']:
         st.session_state.review_complete = True
-        st.success("🎉 All documents reviewed!")
+        st.success(" All documents reviewed!")
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("📥 Proceed to Export", type="primary", use_container_width=True):
+            if st.button(" Proceed to Export", type="primary", use_container_width=True):
                 st.session_state.page = 'export'
                 st.rerun()
 
 
 def export_page():
     """Export documents page."""
-    st.title("📥 Export Documents")
+    st.title(" Export Documents")
     
     if not st.session_state.review_complete or not st.session_state.review_manager:
         st.error("Review not complete")
@@ -1075,7 +1076,7 @@ def export_page():
     export_manager = st.session_state.export_manager
     
     # Export summary
-    st.markdown("### 📊 Export Summary")
+    st.markdown("###  Export Summary")
     
     # Get final determinations
     final_determinations = []
@@ -1112,7 +1113,7 @@ def export_page():
     
     # Export options
     st.markdown("---")
-    st.markdown("### 🔧 Export Options")
+    st.markdown("### Export Options")
     
     col1, col2 = st.columns(2)
     
@@ -1120,7 +1121,7 @@ def export_page():
         st.markdown("#### Production Documents")
         st.info(f"Export {producible_count} responsive documents without exemptions")
         
-        if st.button("📄 Generate Production PDF", type="primary", use_container_width=True):
+        if st.button(" Generate Production PDF", type="primary", use_container_width=True):
             with st.spinner("Generating production PDF..."):
                 try:
                     export_dir = Path("data/test_exports")
@@ -1129,7 +1130,7 @@ def export_page():
                     result = export_manager.generate_exports(st.session_state.session)
                     
                     if result['production_pdf']:
-                        st.success(f"✅ Production PDF created: {Path(result['production_pdf']).name}")
+                        st.success(f" Production PDF created: {Path(result['production_pdf']).name}")
                     else:
                         st.warning("No documents to export in production PDF")
                 except Exception as e:
@@ -1139,7 +1140,7 @@ def export_page():
         st.markdown("#### Privilege Log")
         st.info(f"Document {exempt_count} withheld documents with exemptions")
         
-        if st.button("📋 Generate Privilege Log", type="secondary", use_container_width=True):
+        if st.button(" Generate Privilege Log", type="secondary", use_container_width=True):
             with st.spinner("Generating privilege log..."):
                 try:
                     export_dir = Path("data/test_exports")
@@ -1148,9 +1149,9 @@ def export_page():
                     result = export_manager.generate_exports(st.session_state.session)
                     
                     if result['privilege_log_csv']:
-                        st.success(f"✅ Privilege log CSV created: {Path(result['privilege_log_csv']).name}")
+                        st.success(f" Privilege log CSV created: {Path(result['privilege_log_csv']).name}")
                     if result['privilege_log_pdf']:
-                        st.success(f"✅ Privilege log PDF created: {Path(result['privilege_log_pdf']).name}")
+                        st.success(f" Privilege log PDF created: {Path(result['privilege_log_pdf']).name}")
                     
                     if not result['privilege_log_csv'] and not result['privilege_log_pdf']:
                         st.info("No withheld documents requiring privilege log")
@@ -1159,9 +1160,9 @@ def export_page():
     
     # Full export
     st.markdown("---")
-    st.markdown("### 📦 Complete Export Package")
+    st.markdown("###  Complete Export Package")
     
-    if st.button("🚀 Generate All Export Files", type="primary", use_container_width=True):
+    if st.button(" Generate All Export Files", type="primary", use_container_width=True):
         with st.spinner("Generating complete export package..."):
             try:
                 export_dir = Path("data/test_exports")
@@ -1169,20 +1170,20 @@ def export_page():
                 
                 result = export_manager.generate_exports(st.session_state.session)
                 
-                st.success("✅ Export complete!")
+                st.success(" Export complete!")
                 
                 # Show results
                 st.markdown("#### Generated Files:")
                 if result['production_pdf']:
-                    st.markdown(f"- 📄 Production PDF: `{Path(result['production_pdf']).name}`")
+                    st.markdown(f"-  Production PDF: `{Path(result['production_pdf']).name}`")
                 if result['privilege_log_csv']:
-                    st.markdown(f"- 📊 Privilege Log CSV: `{Path(result['privilege_log_csv']).name}`")
+                    st.markdown(f"-  Privilege Log CSV: `{Path(result['privilege_log_csv']).name}`")
                 if result['privilege_log_pdf']:
-                    st.markdown(f"- 📋 Privilege Log PDF: `{Path(result['privilege_log_pdf']).name}`")
+                    st.markdown(f"-  Privilege Log PDF: `{Path(result['privilege_log_pdf']).name}`")
                 if result['summary_report']:
-                    st.markdown(f"- 📈 Summary Report: `{Path(result['summary_report']).name}`")
+                    st.markdown(f"-  Summary Report: `{Path(result['summary_report']).name}`")
                 if result['manifest']:
-                    st.markdown(f"- 📝 Export Manifest: `{Path(result['manifest']).name}`")
+                    st.markdown(f"-  Export Manifest: `{Path(result['manifest']).name}`")
                 
                 st.info(f"All files saved to: `{export_dir}`")
                 
@@ -1191,7 +1192,7 @@ def export_page():
     
     # Session save option
     st.markdown("---")
-    st.markdown("### 💾 Save Session")
+    st.markdown("###  Save Session")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -1204,7 +1205,7 @@ def export_page():
                     st.session_state.review_manager,
                     format='json'
                 )
-                st.success(f"✅ Session saved: {Path(filepath).name}")
+                st.success(f" Session saved: {Path(filepath).name}")
             except Exception as e:
                 st.error(f"Error saving session: {str(e)}")
     
@@ -1218,7 +1219,7 @@ def export_page():
                     st.session_state.review_manager,
                     format='pickle'
                 )
-                st.success(f"✅ Session saved: {Path(filepath).name}")
+                st.success(f" Session saved: {Path(filepath).name}")
             except Exception as e:
                 st.error(f"Error saving session: {str(e)}")
 
@@ -1226,11 +1227,14 @@ def export_page():
 def main():
     """Main application entry point."""
     st.set_page_config(
-        page_title="CPRA Processing Demo",
-        page_icon="🏛️",
+        page_title="CPRA Processing System",
+        page_icon=None,
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # Apply custom styling
+    apply_custom_styling()
     
     # Initialize session state
     init_session_state()

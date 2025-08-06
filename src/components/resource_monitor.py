@@ -48,7 +48,7 @@ class ResourceMonitor:
             # CPU Usage with color coding
             cpu_color = self._get_usage_color(resources['cpu_percent'])
             st.metric(
-                "🖥️ CPU Usage",
+                "CPU Usage",
                 f"{resources['cpu_percent']:.1f}%",
                 delta=None,
                 help="Current CPU utilization"
@@ -60,7 +60,7 @@ class ResourceMonitor:
             # Memory Usage
             mem_color = self._get_usage_color(resources['memory_percent'])
             st.metric(
-                "💾 RAM Usage",
+                "RAM Usage",
                 f"{resources['memory_percent']:.1f}%",
                 delta=f"{resources['memory_used_gb']:.1f}/{resources['memory_total_gb']:.1f} GB",
                 help="System memory utilization"
@@ -71,7 +71,7 @@ class ResourceMonitor:
             # Model Memory
             model_size = estimate_model_memory_usage(model_name)
             st.metric(
-                "🧠 Model Size",
+                "Model Size",
                 f"{model_size:.1f} GB",
                 delta=None,
                 help=f"Estimated memory for {model_name}"
@@ -84,10 +84,10 @@ class ResourceMonitor:
             # Network Status
             if network_status:
                 st.error(network_msg)  # Show online as error (should be offline for demo)
-                st.caption("⚠️ Disable network for demo")
+                st.caption("Disable network for demo")
             else:
                 st.success(network_msg)  # Show offline as success (airplane mode)
-                st.caption("✅ Ready for offline demo")
+                st.caption("Ready for offline demo")
     
     def create_compact_monitor(self, container):
         """
@@ -99,7 +99,7 @@ class ResourceMonitor:
         resources = get_system_resources()
         network_status, network_msg = check_network_connectivity()
         
-        container.markdown("### 📊 System Resources")
+        container.markdown("### System Resources")
         
         # CPU and Memory bars
         container.markdown(f"**CPU:** {resources['cpu_percent']:.1f}%")
@@ -131,15 +131,15 @@ class ResourceMonitor:
         with col1:
             # Processing Phase
             phase_emoji = {
-                "idle": "⏸️",
-                "responsiveness": "🔍",
-                "exemptions": "🛡️",
-                "finalize": "✅"
+                "idle": "Idle",
+                "responsiveness": "Analyzing",
+                "exemptions": "Checking",
+                "finalize": "Finalizing"
             }
             st.metric(
                 "Phase",
                 phase.title(),
-                delta=phase_emoji.get(phase, "⚙️"),
+                delta=phase_emoji.get(phase, "Processing"),
                 help="Current processing phase"
             )
         
@@ -148,14 +148,14 @@ class ResourceMonitor:
             if model_active:
                 st.metric(
                     "AI Status",
-                    "🧠 Active",
+                    "Active",
                     delta=f"CPU: {resources['cpu_percent']:.0f}%",
                     help="Model is processing"
                 )
             else:
                 st.metric(
                     "AI Status",
-                    "💤 Idle",
+                    "Idle",
                     delta=None,
                     help="Model is waiting"
                 )
@@ -220,11 +220,11 @@ def create_performance_gauge(value: float, max_value: float, label: str, contain
     
     # Color based on percentage
     if percentage < 50:
-        color = "🟢"
+        color = "[OK]"
     elif percentage < 75:
-        color = "🟡"
+        color = "[WARN]"
     else:
-        color = "🔴"
+        color = "[HIGH]"
     
     container.markdown(f"{label}: {color} {gauge} {percentage:.0f}%")
 
@@ -243,7 +243,7 @@ def create_model_comparison_chart(container):
         "gpt-oss:20b": 13.0
     }
     
-    container.markdown("### 🤖 Model Comparison")
+    container.markdown("### Model Comparison")
     
     for model, size in models.items():
         # Create visual bar
@@ -255,8 +255,8 @@ def create_model_comparison_chart(container):
         
         # Show if it fits in common RAM sizes
         if size <= 8:
-            container.caption("✅ Runs on 8GB RAM")
+            container.caption("Runs on 8GB RAM")
         elif size <= 16:
-            container.caption("⚠️ Needs 16GB RAM")
+            container.caption("Needs 16GB RAM")
         else:
-            container.caption("❌ Needs 32GB+ RAM")
+            container.caption("Needs 32GB+ RAM")

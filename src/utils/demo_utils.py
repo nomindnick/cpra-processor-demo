@@ -28,9 +28,9 @@ def check_network_connectivity() -> Tuple[bool, str]:
     try:
         # Try to create a socket connection to common DNS servers
         socket.create_connection(("8.8.8.8", 53), timeout=1)
-        return True, "🌐 Online"
+        return True, "Online"
     except (socket.error, socket.timeout):
-        return False, "✈️ Offline (Airplane Mode)"
+        return False, "Offline (Airplane Mode)"
 
 
 def get_system_resources() -> Dict[str, float]:
@@ -160,13 +160,13 @@ def get_ai_thinking_animation(phase: str = "analyzing") -> str:
         phase: Current processing phase
     
     Returns:
-        Animated string with emoji
+        Animated string for status display
     """
     animations = {
-        "analyzing": ["🤔 AI Analyzing", "🤔 AI Analyzing.", "🤔 AI Analyzing..", "🤔 AI Analyzing..."],
-        "responsiveness": ["🔍 Checking Responsiveness", "🔍 Checking Responsiveness.", "🔍 Checking Responsiveness..", "🔍 Checking Responsiveness..."],
-        "exemptions": ["🛡️ Scanning for Exemptions", "🛡️ Scanning for Exemptions.", "🛡️ Scanning for Exemptions..", "🛡️ Scanning for Exemptions..."],
-        "thinking": ["🧠 AI Thinking", "🧠 AI Thinking.", "🧠 AI Thinking..", "🧠 AI Thinking..."]
+        "analyzing": ["AI Analyzing", "AI Analyzing.", "AI Analyzing..", "AI Analyzing..."],
+        "responsiveness": ["Checking Responsiveness", "Checking Responsiveness.", "Checking Responsiveness..", "Checking Responsiveness..."],
+        "exemptions": ["Scanning for Exemptions", "Scanning for Exemptions.", "Scanning for Exemptions..", "Scanning for Exemptions..."],
+        "thinking": ["AI Processing", "AI Processing.", "AI Processing..", "AI Processing..."]
     }
     
     # Get animation frames for the phase
@@ -240,7 +240,7 @@ def create_demo_sidebar_controls():
         Dictionary of demo settings
     """
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎬 Demo Controls")
+    st.sidebar.markdown("### Demo Controls")
     
     demo_settings = {}
     
@@ -283,7 +283,7 @@ def create_demo_sidebar_controls():
         )
         
         # Auto-load demo data
-        if st.sidebar.button("📦 Load Demo Data", type="secondary"):
+        if st.sidebar.button("Load Demo Data", type="secondary"):
             email_content, cpra_requests = load_demo_data()
             st.session_state['demo_data_loaded'] = True
             st.session_state['demo_emails'] = email_content
@@ -322,18 +322,18 @@ def create_phase_indicator(phase: str, is_active: bool = False) -> str:
         Formatted phase indicator string
     """
     indicators = {
-        "upload": "📤 Upload",
-        "responsiveness": "🔍 Responsiveness Analysis",
-        "exemptions": "🛡️ Exemption Detection",
-        "review": "👁️ Review",
-        "export": "📥 Export"
+        "upload": "Upload",
+        "responsiveness": "Responsiveness Analysis",
+        "exemptions": "Exemption Detection",
+        "review": "Review",
+        "export": "Export"
     }
     
     indicator = indicators.get(phase, phase)
     
     if is_active:
-        # Add pulsing animation effect using Unicode
-        return f"▶️ {indicator} ⚡"
+        # Add active indicator
+        return f"► {indicator}"
     else:
         return f"  {indicator}"
 

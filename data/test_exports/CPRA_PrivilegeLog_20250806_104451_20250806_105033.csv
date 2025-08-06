@@ -1,0 +1,7 @@
+Document_ID,Date,From,To,Subject,Responsive,Exemptions_Applied,Justification,Review_Notes
+parsed_email_0,2024-03-14 08:45:00,mike.rodriguez@riverside.gov,"sarah.chen@riverside.gov, david.kim@riverside.gov",URGENT: Water intrusion discovered in north wing,Yes,Deliberative Process,Document withheld,
+parsed_email_1,2024-03-15 14:30:00,james.liu@structuralengineers.com,sarah.chen@riverside.gov,Structural assessment - roof leak damage,Yes,Attorney-Client Privilege,Document withheld,
+parsed_email_2,2024-03-18 09:15:00,robert.sterling@sterlingmunicipallaw.com,david.kim@riverside.gov,PRIVILEGED: Legal implications of roof leak delay,Yes,Attorney-Client Privilege,Document withheld,
+parsed_email_3,2024-03-18 11:30:00,sarah.chen@riverside.gov,david.kim@riverside.gov,DRAFT: Options for addressing roof leak,Yes,Attorney-Client Privilege; Deliberative Process,Document withheld,
+parsed_email_8,2024-04-04 14:00:00,library.manager@riverside.gov,mike.rodriguez@riverside.gov,Library renovation - status update,No,None,Document not responsive to CPRA request,
+parsed_email_9,2024-03-06 13:30:00,safety.coordinator@riverside.gov,all-staff@riverside.gov,Mandatory safety training schedule - March 2024,No,None,Document not responsive to CPRA request,
