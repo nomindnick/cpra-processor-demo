@@ -139,7 +139,13 @@ def save_recovery_session():
             recovery_path.mkdir(parents=True, exist_ok=True)
             
             recovery_file = recovery_path / f"recovery_{st.session_state.session.session_id}.pkl"
-            session_manager.save_session(st.session_state.session, str(recovery_file))
+            # Save session with proper format parameter
+            session_manager.save_session(st.session_state.session, format="pickle")
+            # Move saved file to recovery location
+            saved_file = session_manager.data_dir / f"{st.session_state.session.session_id}.pkl"
+            if saved_file.exists():
+                import shutil
+                shutil.move(str(saved_file), str(recovery_file))
             st.session_state.recovery_session_path = str(recovery_file)
             
             logger.info(f"Saved recovery session to {recovery_file}")
@@ -267,7 +273,7 @@ def upload_page():
                 if st.button("Restore Previous Session", type="primary"):
                     st.session_state.session = recovery_session
                     st.session_state.emails = recovery_session.emails
-                    st.session_state.cpra_requests = [r.text for r in recovery_session.cpra_requests]
+                    st.session_state.cpra_requests = recovery_session.cpra_requests
                     st.session_state.responsiveness_results = list(recovery_session.responsiveness_results.values())
                     st.session_state.exemption_results = list(recovery_session.exemption_results.values())
                     
@@ -318,7 +324,11 @@ def upload_page():
                 if email_content:
                     emails = parse_emails(email_content)
                     st.session_state.emails = emails
-                    st.session_state.cpra_requests = cpra_requests
+                    # Convert string requests to CPRARequest objects
+                    st.session_state.cpra_requests = [
+                        CPRARequest(text=req, request_id=f"request_{i}")
+                        for i, req in enumerate(cpra_requests)
+                    ]
                     st.success(f"✅ Loaded demo data: {len(emails)} emails, {len(cpra_requests)} requests")
             else:
                 sample_content = load_sample_data()
@@ -339,7 +349,7 @@ def upload_page():
             with st.expander(f"View {len(st.session_state.emails)} emails"):
                 for i, email in enumerate(st.session_state.emails, 1):
                     st.markdown(f"**{i}.** {email.subject or '(No subject)'}")
-                    st.caption(f"From: {email.sender} | Date: {email.date}")
+                    st.caption(f"From: {email.from_address} | Date: {email.date}")
     
     with col2:
         st.markdown("### 📝 CPRA Requests")
@@ -362,7 +372,11 @@ def upload_page():
             if request.strip():
                 requests.append(request.strip())
         
-        st.session_state.cpra_requests = requests
+        # Convert string requests to CPRARequest objects
+        st.session_state.cpra_requests = [
+            CPRARequest(text=req, request_id=f"request_{i}")
+            for i, req in enumerate(requests)
+        ]
         
         if requests:
             st.success(f"✅ {len(requests)} CPRA request(s) configured")
@@ -507,7 +521,7 @@ def processing_page():
             
             📧 **Subject:** {email.subject or '(No subject)'}
             
-            👤 **From:** {email.sender}
+            👤 **From:** {email.from_address}
             
             📅 **Date:** {email.date}
             """)
@@ -816,7 +830,7 @@ def results_dashboard():
                 with st.expander(f"📧 {email.subject or '(No subject)'}"):
                     col1, col2 = st.columns([2, 1])
                     with col1:
-                        st.markdown(f"**From:** {email.sender}")
+                        st.markdown(f"**From:** {email.from_address}")
                         st.markdown(f"**Date:** {email.date}")
                         st.markdown(f"**Responsive to:** Request(s) {', '.join(map(str, result.responsive_to_requests))}")
                     with col2:
@@ -835,7 +849,7 @@ def results_dashboard():
                 email = st.session_state.emails[idx]
                 
                 with st.expander(f"📧 {email.subject or '(No subject)'}"):
-                    st.markdown(f"**From:** {email.sender}")
+                    st.markdown(f"**From:** {email.from_address}")
                     st.markdown(f"**Date:** {email.date}")
                     st.markdown("**Status:** Not responsive to any CPRA request")
         else:
@@ -849,7 +863,7 @@ def results_dashboard():
                 exemption_result = st.session_state.exemption_results[idx]
                 
                 with st.expander(f"📧 {email.subject or '(No subject)'}"):
-                    st.markdown(f"**From:** {email.sender}")
+                    st.markdown(f"**From:** {email.from_address}")
                     st.markdown(f"**Date:** {email.date}")
                     st.markdown("**Exemptions:**")
                     for exemption in exemption_result.exemptions:
@@ -960,7 +974,7 @@ def review_page():
             
             # Email metadata
             st.markdown(f"**Subject:** {email.subject or '(No subject)'}")
-            st.markdown(f"**From:** {email.sender}")
+            st.markdown(f"**From:** {email.from_address}")
             st.markdown(f"**To:** {email.recipient}")
             st.markdown(f"**Date:** {email.date}")
             
