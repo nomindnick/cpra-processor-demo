@@ -50,7 +50,6 @@ class TestEndToEndIntegration(unittest.TestCase):
         cls.config.export.export_directory = str(cls.export_dir)
         cls.config.session.session_directory = str(cls.session_dir)
         cls.config.session.enable_auto_save = True
-        cls.config.session.enable_recovery = True
     
     @classmethod
     def tearDownClass(cls):

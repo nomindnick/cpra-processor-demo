@@ -132,7 +132,7 @@ def test_end_to_end():
                 if result:
                     exemption_results.append(result)
                     session.exemption_results[str(i)] = result
-                    if result.has_exemptions:
+                    if result.has_any_exemption():
                         print(f"      → Found exemptions: {', '.join(result.exemptions)}")
                     else:
                         print(f"      → No exemptions")
@@ -145,7 +145,7 @@ def test_end_to_end():
         else:
             exemption_results.append(None)
     
-    exemption_count = sum(1 for r in exemption_results if r and r.has_exemptions)
+    exemption_count = sum(1 for r in exemption_results if r and r.has_any_exemption())
     print(f"   ✅ Exemption analysis complete")
     print(f"   📊 Emails with exemptions: {exemption_count}")
     

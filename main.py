@@ -3,9 +3,8 @@
 CPRA Processing Application - Main Streamlit Application
 
 Sprint 7 Enhancement: End-to-End Integration
-- Enhanced error handling and recovery
+- Enhanced error handling
 - Configuration management integration
-- Session recovery features
 - Performance optimizations
 """
 
@@ -94,11 +93,9 @@ def init_session_state():
         }
     if 'resource_monitor' not in st.session_state:
         st.session_state.resource_monitor = ResourceMonitor()
-    # Error recovery state
+    # Error state
     if 'last_error' not in st.session_state:
         st.session_state.last_error = None
-    if 'recovery_session_path' not in st.session_state:
-        st.session_state.recovery_session_path = None
 
 
 def load_sample_data() -> Optional[str]:
@@ -118,6 +115,9 @@ def parse_emails(content: str) -> List[Email]:
     """Parse email content into Email objects with error handling."""
     try:
         parser = EmailParser()
+        # Add debug logging
+        logger.debug(f"Parsing content of length: {len(content)}")
+        logger.debug(f"First 100 chars: {content[:100] if content else 'Empty'}")
         emails = parser.parse_email_file(content)
         logger.info(f"Successfully parsed {len(emails)} emails")
         return emails
@@ -127,69 +127,6 @@ def parse_emails(content: str) -> List[Email]:
         return []
 
 
-def save_recovery_session():
-    """Save current session for recovery purposes."""
-    if not config.session.enable_auto_save:
-        return
-    
-    try:
-        if st.session_state.session:
-            session_manager = SessionManager()
-            recovery_path = Path(config.session.session_directory) / "recovery"
-            recovery_path.mkdir(parents=True, exist_ok=True)
-            
-            recovery_file = recovery_path / f"recovery_{st.session_state.session.session_id}.pkl"
-            # Save session with proper format parameter
-            session_manager.save_session(st.session_state.session, format="pickle")
-            # Move saved file to recovery location
-            saved_file = session_manager.data_dir / f"{st.session_state.session.session_id}.pkl"
-            if saved_file.exists():
-                import shutil
-                shutil.move(str(saved_file), str(recovery_file))
-            st.session_state.recovery_session_path = str(recovery_file)
-            
-            logger.info(f"Saved recovery session to {recovery_file}")
-    except Exception as e:
-        logger.error(f"Failed to save recovery session: {e}")
-
-
-def load_recovery_session() -> Optional[ProcessingSession]:
-    """Attempt to load a recovery session."""
-    if not config.session.enable_recovery:
-        return None
-    
-    try:
-        recovery_path = Path(config.session.session_directory) / "recovery"
-        if recovery_path.exists():
-            # Find most recent recovery file
-            recovery_files = list(recovery_path.glob("recovery_*.pkl"))
-            if recovery_files:
-                latest_file = max(recovery_files, key=lambda p: p.stat().st_mtime)
-                
-                session_manager = SessionManager()
-                session = session_manager.load_session(str(latest_file))
-                
-                logger.info(f"Loaded recovery session from {latest_file}")
-                return session
-    except Exception as e:
-        logger.error(f"Failed to load recovery session: {e}")
-    
-    return None
-
-
-def clear_recovery_sessions():
-    """Clear old recovery session files."""
-    try:
-        recovery_path = Path(config.session.session_directory) / "recovery"
-        if recovery_path.exists():
-            for recovery_file in recovery_path.glob("recovery_*.pkl"):
-                # Remove files older than configured timeout
-                age_hours = (datetime.now() - datetime.fromtimestamp(recovery_file.stat().st_mtime)).total_seconds() / 3600
-                if age_hours > config.session.session_timeout_hours:
-                    recovery_file.unlink()
-                    logger.info(f"Removed old recovery file: {recovery_file}")
-    except Exception as e:
-        logger.error(f"Error clearing recovery sessions: {e}")
 
 
 def sidebar_navigation():
@@ -244,7 +181,7 @@ def sidebar_navigation():
             
             if st.session_state.review_manager:
                 summary = st.session_state.review_manager.get_review_summary(st.session_state.session)
-                completed = summary['review_statuses']['completed']
+                completed = summary['review_status']['completed']
                 total = summary['total_documents']
                 st.sidebar.text(f"Reviewed: {completed}/{total}")
     
@@ -262,35 +199,6 @@ def sidebar_navigation():
 def upload_page():
     """File upload and CPRA request input page."""
     st.title("📤 Upload Documents & Configure Requests")
-    
-    # Check for recovery session
-    if config.session.enable_recovery and not st.session_state.session:
-        recovery_session = load_recovery_session()
-        if recovery_session:
-            st.info("🔄 Recovery session found!")
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Restore Previous Session", type="primary"):
-                    st.session_state.session = recovery_session
-                    st.session_state.emails = recovery_session.emails
-                    st.session_state.cpra_requests = recovery_session.cpra_requests
-                    st.session_state.responsiveness_results = list(recovery_session.responsiveness_results.values())
-                    st.session_state.exemption_results = list(recovery_session.exemption_results.values())
-                    
-                    # Restore review manager if processing was complete
-                    if recovery_session.responsiveness_results:
-                        review_manager = ReviewManager()
-                        review_manager.initialize_reviews(recovery_session)
-                        st.session_state.review_manager = review_manager
-                        st.session_state.processing_complete = True
-                        st.session_state.page = 'results'
-                        st.rerun()
-                    else:
-                        st.success("✅ Session restored! Ready to continue processing.")
-            with col2:
-                if st.button("Start Fresh"):
-                    clear_recovery_sessions()
-                    st.rerun()
     
     # Check if demo data was loaded from sidebar
     if st.session_state.demo_mode and st.session_state.get('demo_data_loaded'):
@@ -334,9 +242,13 @@ def upload_page():
         
         if uploaded_file is not None:
             content = uploaded_file.read().decode('utf-8')
-            emails = parse_emails(content)
-            st.session_state.emails = emails
-            st.success(f"✅ Parsed {len(emails)} emails from uploaded file")
+            # Only parse if content looks like emails (has From: header)
+            if content and 'From:' in content:
+                emails = parse_emails(content)
+                st.session_state.emails = emails
+                st.success(f"✅ Parsed {len(emails)} emails from uploaded file")
+            else:
+                st.error("Uploaded file doesn't appear to contain emails in the expected format")
         
         # Display parsed emails
         if st.session_state.emails:
@@ -356,7 +268,11 @@ def upload_page():
         existing_requests = st.session_state.cpra_requests if st.session_state.cpra_requests else []
         
         for i in range(5):
-            default_value = existing_requests[i] if i < len(existing_requests) else ""
+            if i < len(existing_requests):
+                # Handle both CPRARequest objects and strings
+                default_value = existing_requests[i].text if isinstance(existing_requests[i], CPRARequest) else str(existing_requests[i])
+            else:
+                default_value = ""
             request = st.text_area(
                 f"Request {i+1}",
                 key=f"cpra_request_{i}",
@@ -403,6 +319,21 @@ def processing_page():
     
     if not st.session_state.emails or not st.session_state.cpra_requests:
         st.error("No emails or requests to process")
+        return
+    
+    # Check if processing is already complete
+    if st.session_state.processing_complete:
+        st.success("✅ Processing already complete!")
+        st.info("Navigate to Results Dashboard or Document Review to view results.")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("📊 View Results", type="primary", use_container_width=True):
+                st.session_state.page = 'results'
+                st.rerun()
+        with col2:
+            if st.button("👁️ Review Documents", use_container_width=True):
+                st.session_state.page = 'review'
+                st.rerun()
         return
     
     # Get demo settings
@@ -543,7 +474,7 @@ def processing_page():
         
         # Auto-save session periodically
         if (i + 1) % config.processing.auto_save_interval == 0:
-            save_recovery_session()
+            pass  # Recovery functionality removed
         
         # Clear AI activity after processing
         if demo_mode:
@@ -622,7 +553,7 @@ def processing_page():
                 logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error checking exemptions for email {i+1}")
             
             if demo_mode:
-                if result and result.has_exemptions:
+                if result and result.has_any_exemption():
                     ai_activity.warning(f"⚠️ Found {len(result.exemptions)} exemption(s)")
                 else:
                     ai_activity.success("✅ No exemptions found")
@@ -638,13 +569,13 @@ def processing_page():
         overall_progress.progress(progress)
         
         # Update stats
-        exemptions_so_far = sum(1 for r in exemption_results if r and r.has_exemptions)
+        exemptions_so_far = sum(1 for r in exemption_results if r and r.has_any_exemption())
         exemption_count.metric("With Exemptions", str(exemptions_so_far))
         elapsed = int(time.time() - start_time)
         processing_time.metric("Processing Time", f"{elapsed}s")
         
         if exemption_results[i]:
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {len(exemption_results[i].exemptions)} exemption(s) found")
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Email {i+1}: {len(exemption_results[i].get_applicable_exemptions())} exemption(s) found")
             log_area.text_area("Processing Log", "\n".join(logs[-10:]), height=200)
     
     st.session_state.exemption_results = exemption_results
@@ -678,8 +609,6 @@ def processing_page():
         st.session_state.review_manager = review_manager
         st.session_state.processing_complete = True
         
-        # Save final session for recovery
-        save_recovery_session()
         
     except Exception as e:
         logger.error(f"Error initializing review manager: {e}")
@@ -721,7 +650,7 @@ def processing_page():
     if demo_mode:
         # Create impressive summary statistics
         responsive_docs = sum(1 for r in responsiveness_results if r and r.is_responsive_to_any())
-        exempt_docs = sum(1 for r in exemption_results if r and r.has_exemptions)
+        exempt_docs = sum(1 for r in exemption_results if r and r.has_any_exemption())
         
         st.balloons()  # Celebration effect
         
@@ -763,7 +692,7 @@ def processing_page():
         ✅ **Processing Complete!**
         - Processed {total_emails} emails in {total_time} seconds
         - Found {sum(1 for r in responsiveness_results if r and r.is_responsive_to_any())} responsive documents
-        - Identified {sum(1 for r in exemption_results if r and r.has_exemptions)} documents with exemptions
+        - Identified {sum(1 for r in exemption_results if r and r.has_any_exemption())} documents with exemptions
         """)
     
     # Navigate to results
@@ -793,7 +722,7 @@ def results_dashboard():
     non_responsive_emails = [i for i, r in enumerate(st.session_state.responsiveness_results)
                              if not r or not r.is_responsive_to_any()]
     exemption_emails = [i for i, r in enumerate(st.session_state.exemption_results)
-                       if r and r.has_exemptions]
+                       if r and r.has_any_exemption()]
     
     with col1:
         st.metric("Total Documents", total_emails)
@@ -827,11 +756,11 @@ def results_dashboard():
                     with col1:
                         st.markdown(f"**From:** {email.from_address}")
                         st.markdown(f"**Date:** {email.date}")
-                        st.markdown(f"**Responsive to:** Request(s) {', '.join(map(str, result.responsive_to_requests))}")
+                        st.markdown(f"**Responsive to:** Request(s) {', '.join(map(str, result.get_responsive_requests()))}")
                     with col2:
                         st.markdown(f"**Confidence:** {result.confidence}")
                         if st.session_state.exemption_results[idx]:
-                            exemptions = st.session_state.exemption_results[idx].exemptions
+                            exemptions = st.session_state.exemption_results[idx].get_applicable_exemptions()
                             if exemptions:
                                 st.markdown(f"**Exemptions:** {len(exemptions)}")
         else:
@@ -933,7 +862,7 @@ def review_page():
     
     # Review progress
     summary = review_manager.get_review_summary(st.session_state.session)
-    completed = summary['review_statuses']['completed']
+    completed = summary['review_status']['completed']
     total = summary['total_documents']
     st.progress(completed / total if total > 0 else 0)
     st.markdown(f"**Review Progress:** {completed} of {total} documents reviewed")

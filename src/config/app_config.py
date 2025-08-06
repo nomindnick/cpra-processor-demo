@@ -125,7 +125,6 @@ class SessionConfig:
     """Configuration for session management."""
     session_directory: str = "sessions"
     enable_auto_save: bool = True
-    enable_recovery: bool = True
     session_timeout_hours: int = 24
     max_session_size_mb: int = 100
     compression_enabled: bool = False
@@ -136,7 +135,6 @@ class SessionConfig:
         return cls(
             session_directory=os.getenv('CPRA_SESSION_DIR', cls.session_directory),
             enable_auto_save=os.getenv('CPRA_AUTO_SAVE', 'true').lower() == 'true',
-            enable_recovery=os.getenv('CPRA_ENABLE_RECOVERY', 'true').lower() == 'true',
             session_timeout_hours=int(os.getenv('CPRA_SESSION_TIMEOUT', str(cls.session_timeout_hours))),
             max_session_size_mb=int(os.getenv('CPRA_MAX_SESSION_SIZE', str(cls.max_session_size_mb))),
             compression_enabled=os.getenv('CPRA_COMPRESSION', 'false').lower() == 'true'

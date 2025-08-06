@@ -184,6 +184,12 @@ CONFIDENCE LEVELS:
 - "medium": Indirect or partial relevance to the request  
 - "low": Minimal or questionable relevance to the request
 
+IMPORTANT INSTRUCTIONS:
+- Analyze the ENTIRE email as a whole document
+- Provide ONE single assessment for EACH CPRA request
+- Do NOT analyze individual paragraphs or sections separately
+- Your arrays must have EXACTLY {len(cpra_requests)} element(s) - one per CPRA request
+
 You must respond with valid JSON only, using this exact format:
 {{
     "responsive": [true/false for each request],
@@ -191,20 +197,28 @@ You must respond with valid JSON only, using this exact format:
     "reasoning": ["brief explanation for each request"]
 }}
 
-CRITICAL: Your response must be valid JSON with exactly {len(cpra_requests)} elements in each array."""
+Example for {len(cpra_requests)} request(s):
+{{
+    "responsive": [{', '.join(['true'] * len(cpra_requests))}],
+    "confidence": [{', '.join(['"high"'] * len(cpra_requests))}],
+    "reasoning": [{', '.join(['"The email directly discusses this topic"'] * len(cpra_requests))}]
+}}
+
+CRITICAL: Each array must contain EXACTLY {len(cpra_requests)} element(s) - one element per CPRA request."""
         
         # Format the requests with clear numbering
         requests_text = "\n".join([f"Request {i+1}: {req}" for i, req in enumerate(cpra_requests)])
         
-        prompt = f"""Analyze this email for responsiveness to the following CPRA requests:
+        prompt = f"""Analyze this email for responsiveness to the following CPRA request(s):
 
-CPRA REQUESTS TO ANALYZE:
+CPRA REQUEST(S) TO ANALYZE:
 {requests_text}
 
 EMAIL DOCUMENT TO ANALYZE:
 {email_content}
 
-Provide your analysis in the required JSON format with exactly {len(cpra_requests)} elements in each array."""
+REMEMBER: Provide ONE assessment per CPRA request. Your JSON response must have exactly {len(cpra_requests)} element(s) in each array.
+Analyze the email as a WHOLE DOCUMENT, not paragraph by paragraph."""
         
         # Retry logic for better reliability
         for attempt in range(retry_attempts):
