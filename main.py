@@ -30,7 +30,7 @@ from src.processors.session_manager import SessionManager
 from src.processors.export_manager import ExportManager
 from src.utils.data_structures import (
     Email, ProcessingSession, ResponsivenessAnalysis,
-    ExemptionAnalysis, DocumentReview,
+    ExemptionAnalysis, DocumentReview, ExemptionType,
     ReviewStatus, CPRARequest
 )
 from src.utils.demo_utils import (
@@ -790,9 +790,20 @@ def results_dashboard():
                     st.markdown(f"**From:** {email.from_address}")
                     st.markdown(f"**Date:** {email.date}")
                     st.markdown("**Exemptions:**")
-                    for exemption in exemption_result.exemptions:
-                        st.markdown(f"- **{exemption.exemption_type}** ({exemption.confidence})")
-                        st.caption(exemption.reasoning)
+                    exemptions = exemption_result.get_applicable_exemptions()
+                    for exemption_type in exemptions:
+                        if exemption_type == ExemptionType.ATTORNEY_CLIENT:
+                            ex_data = exemption_result.attorney_client
+                            st.markdown(f"- **Attorney-Client Privilege** ({ex_data['confidence'].value})")
+                            st.caption(ex_data['reasoning'])
+                        elif exemption_type == ExemptionType.PERSONNEL:
+                            ex_data = exemption_result.personnel
+                            st.markdown(f"- **Personnel Records** ({ex_data['confidence'].value})")
+                            st.caption(ex_data['reasoning'])
+                        elif exemption_type == ExemptionType.DELIBERATIVE:
+                            ex_data = exemption_result.deliberative
+                            st.markdown(f"- **Deliberative Process** ({ex_data['confidence'].value})")
+                            st.caption(ex_data['reasoning'])
         else:
             st.info("No documents with exemptions found")
     
@@ -899,7 +910,7 @@ def review_page():
             # Email metadata
             st.markdown(f"**Subject:** {email.subject or '(No subject)'}")
             st.markdown(f"**From:** {email.from_address}")
-            st.markdown(f"**To:** {email.recipient}")
+            st.markdown(f"**To:** {email.to_address}")
             st.markdown(f"**Date:** {email.date}")
             
             # Email body
@@ -913,7 +924,7 @@ def review_page():
             st.markdown("#### Responsiveness")
             if responsiveness:
                 if responsiveness.is_responsive_to_any():
-                    st.success(f"✅ Responsive to request(s): {', '.join(map(str, responsiveness.responsive_to_requests))}")
+                    st.success(f"✅ Responsive to request(s): {', '.join(map(str, [i+1 for i in responsiveness.get_responsive_requests()]))}")
                 else:
                     st.info("❌ Not responsive")
                 st.caption(f"Confidence: {responsiveness.confidence}")
@@ -923,11 +934,24 @@ def review_page():
             
             # Exemption analysis
             st.markdown("#### Exemptions")
-            if exemptions and exemptions.exemptions:
-                for exemption in exemptions.exemptions:
-                    st.warning(f"🛡️ {exemption.exemption_type}")
-                    st.caption(f"Confidence: {exemption.confidence}")
-                    st.caption(f"Reasoning: {exemption.reasoning}")
+            if exemptions and exemptions.has_any_exemption():
+                applicable_exemptions = exemptions.get_applicable_exemptions()
+                for exemption_type in applicable_exemptions:
+                    if exemption_type == ExemptionType.ATTORNEY_CLIENT:
+                        ex_data = exemptions.attorney_client
+                        st.warning(f"🛡️ Attorney-Client Privilege")
+                        st.caption(f"Confidence: {ex_data['confidence'].value}")
+                        st.caption(f"Reasoning: {ex_data['reasoning']}")
+                    elif exemption_type == ExemptionType.PERSONNEL:
+                        ex_data = exemptions.personnel
+                        st.warning(f"🛡️ Personnel Records")
+                        st.caption(f"Confidence: {ex_data['confidence'].value}")
+                        st.caption(f"Reasoning: {ex_data['reasoning']}")
+                    elif exemption_type == ExemptionType.DELIBERATIVE:
+                        ex_data = exemptions.deliberative
+                        st.warning(f"🛡️ Deliberative Process")
+                        st.caption(f"Confidence: {ex_data['confidence'].value}")
+                        st.caption(f"Reasoning: {ex_data['reasoning']}")
             else:
                 st.success("✅ No exemptions identified")
             
@@ -937,12 +961,14 @@ def review_page():
             st.markdown("### ✏️ Review Decision")
             
             # Get current review state
-            current_review = st.session_state.session.document_reviews.get(str(current_idx))
+            # Use the same email_id format as the review manager
+            email_id = email.message_id if email.message_id else f"email_{current_idx}"
+            current_review = st.session_state.session.document_reviews.get(email_id)
             
             # Responsiveness override
             is_responsive = st.checkbox(
                 "Document is responsive",
-                value=current_review.final_responsiveness if current_review else (responsiveness.is_responsive_to_any() if responsiveness else False),
+                value=(any(current_review.final_responsive) if current_review and current_review.final_responsive else (responsiveness.is_responsive_to_any() if responsiveness else False)),
                 key=f"responsive_{current_idx}"
             )
             
@@ -952,51 +978,65 @@ def review_page():
             
             attorney_client = st.checkbox(
                 "Attorney-Client Privilege",
-                value=(current_review and "attorney_client_privilege" in current_review.final_exemptions) if current_review else False,
+                value=(current_review and ExemptionType.ATTORNEY_CLIENT in current_review.final_exemptions) if current_review else (exemptions.attorney_client["applies"] if exemptions else False),
                 key=f"attorney_{current_idx}"
             )
-            if attorney_client:
-                exemption_overrides["attorney_client_privilege"] = "User override"
             
             personnel = st.checkbox(
                 "Personnel Records",
-                value=(current_review and "personnel_records" in current_review.final_exemptions) if current_review else False,
+                value=(current_review and ExemptionType.PERSONNEL in current_review.final_exemptions) if current_review else (exemptions.personnel["applies"] if exemptions else False),
                 key=f"personnel_{current_idx}"
             )
-            if personnel:
-                exemption_overrides["personnel_records"] = "User override"
             
             deliberative = st.checkbox(
                 "Deliberative Process",
-                value=(current_review and "deliberative_process" in current_review.final_exemptions) if current_review else False,
+                value=(current_review and ExemptionType.DELIBERATIVE in current_review.final_exemptions) if current_review else (exemptions.deliberative["applies"] if exemptions else False),
                 key=f"deliberative_{current_idx}"
             )
-            if deliberative:
-                exemption_overrides["deliberative_process"] = "User override"
+            
+            # Build exemption overrides dictionary
+            exemption_overrides = {}
+            if current_review:
+                if current_review.user_exemption_override is None:
+                    current_review.user_exemption_override = {}
+            exemption_overrides[ExemptionType.ATTORNEY_CLIENT] = attorney_client
+            exemption_overrides[ExemptionType.PERSONNEL] = personnel
+            exemption_overrides[ExemptionType.DELIBERATIVE] = deliberative
             
             # Save review button
             if st.button("💾 Save Review", type="primary", use_container_width=True):
                 # Get or ensure current review exists
                 if not current_review:
-                    # Review doesn't exist - this shouldn't happen but handle it
-                    st.error("Review not found for this document")
-                else:
+                    # Create a new review if it doesn't exist
+                    from src.utils.data_structures import DocumentReview
+                    current_review = DocumentReview(
+                        email_id=email_id,
+                        review_status=ReviewStatus.PENDING
+                    )
+                    st.session_state.session.document_reviews[email_id] = current_review
+                
+                if current_review:
                     # Start review if not started
                     if current_review.review_status == ReviewStatus.PENDING:
                         review_manager.start_review(current_review)
                     
-                    # Apply overrides directly to the review
-                    if is_responsive != current_review.ai_responsiveness:
-                        current_review.user_responsiveness_override = is_responsive
-                        current_review.responsiveness_override_reason = "User review override"
+                    # Apply responsiveness override
+                    # Since we have one checkbox for overall responsiveness, apply to all requests
+                    if responsiveness:
+                        for i in range(len(responsiveness.responsive)):
+                            if current_review.user_responsive_override is None:
+                                current_review.user_responsive_override = {}
+                            current_review.user_responsive_override[i] = is_responsive
                     
                     # Apply exemption overrides
-                    if exemption_overrides:
-                        current_review.user_exemption_overrides = exemption_overrides
-                        current_review.exemption_override_reason = "User review override"
+                    current_review.user_exemption_override = exemption_overrides
                     
-                    # Finalize review
-                    review_manager.finalize_review(current_review)
+                    # Finalize review with the analysis results
+                    review_manager.finalize_review(
+                        current_review,
+                        responsiveness_analysis=responsiveness,
+                        exemption_analysis=exemptions
+                    )
                 
                 st.success("✅ Review saved!")
                 
@@ -1007,7 +1047,7 @@ def review_page():
     
     # Check if all reviews complete
     summary = review_manager.get_review_summary(st.session_state.session)
-    if summary['review_statuses']['completed'] == summary['total_documents']:
+    if summary['review_status']['completed'] == summary['total_documents']:
         st.session_state.review_complete = True
         st.success("🎉 All documents reviewed!")
         
@@ -1039,11 +1079,12 @@ def export_page():
     
     # Get final determinations
     final_determinations = []
-    for i in range(len(st.session_state.emails)):
-        review = st.session_state.session.document_reviews.get(str(i))
+    for i, email in enumerate(st.session_state.emails):
+        email_id = email.message_id if email.message_id else f"email_{i}"
+        review = st.session_state.session.document_reviews.get(email_id)
         if review:
             final_determinations.append({
-                'responsive': review.final_responsiveness,
+                'responsive': any(review.final_responsive) if review.final_responsive else False,
                 'exemptions': review.final_exemptions
             })
         else:
