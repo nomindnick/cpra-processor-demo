@@ -79,7 +79,8 @@ class CPRAAnalyzer:
         self, 
         email: Email, 
         cpra_requests: List[CPRARequest],
-        email_index: Optional[int] = None
+        email_index: Optional[int] = None,
+        stream_callback: Optional[callable] = None
     ) -> Optional[ResponsivenessAnalysis]:
         """
         Analyze a single email's responsiveness to CPRA requests.
@@ -88,6 +89,7 @@ class CPRAAnalyzer:
             email: Email object to analyze
             cpra_requests: List of CPRA request objects
             email_index: Optional index for tracking (used as email_id if message_id not available)
+            stream_callback: Optional callback for streaming events
             
         Returns:
             ResponsivenessAnalysis object or None if analysis failed
@@ -106,11 +108,23 @@ class CPRAAnalyzer:
             
             self.logger.info(f"Analyzing email {email_id} against {len(request_texts)} CPRA requests")
             
+            # Create wrapped callback if provided to add email context
+            wrapped_callback = None
+            if stream_callback:
+                def wrapped_callback(event_type, content, metadata):
+                    # Add email info to metadata
+                    enhanced_metadata = metadata.copy() if metadata else {}
+                    enhanced_metadata['email_subject'] = email.subject or '(No subject)'
+                    enhanced_metadata['email_from'] = email.from_address
+                    enhanced_metadata['email_index'] = email_index
+                    stream_callback(event_type, content, enhanced_metadata)
+            
             # Call AI model for analysis
             analysis_result = self.ollama_client.analyze_responsiveness(
                 model_name=self.model_name,
                 email_content=email_content,
-                cpra_requests=request_texts
+                cpra_requests=request_texts,
+                stream_callback=wrapped_callback
             )
             
             if not analysis_result:
@@ -160,7 +174,7 @@ class CPRAAnalyzer:
                 if progress_callback:
                     progress_callback(i, len(emails), email)
                 
-                # Analyze individual email
+                # Analyze individual email (no streaming for batch mode currently)
                 analysis = self.analyze_email_responsiveness(email, cpra_requests, i)
                 
                 if analysis:
@@ -190,7 +204,8 @@ class CPRAAnalyzer:
     def analyze_email_exemptions(
         self,
         email: Email,
-        email_index: Optional[int] = None
+        email_index: Optional[int] = None,
+        stream_callback: Optional[callable] = None
     ) -> Optional[ExemptionAnalysis]:
         """
         Analyze a single email's exemptions to CPRA exemption types.
@@ -198,6 +213,7 @@ class CPRAAnalyzer:
         Args:
             email: Email object to analyze
             email_index: Optional index for tracking (used as email_id if message_id not available)
+            stream_callback: Optional callback for streaming events
             
         Returns:
             ExemptionAnalysis object or None if analysis failed
@@ -213,10 +229,22 @@ class CPRAAnalyzer:
             
             self.logger.info(f"Analyzing email {email_id} for CPRA exemptions")
             
+            # Create wrapped callback if provided to add email context
+            wrapped_callback = None
+            if stream_callback:
+                def wrapped_callback(event_type, content, metadata):
+                    # Add email info to metadata
+                    enhanced_metadata = metadata.copy() if metadata else {}
+                    enhanced_metadata['email_subject'] = email.subject or '(No subject)'
+                    enhanced_metadata['email_from'] = email.from_address
+                    enhanced_metadata['email_index'] = email_index
+                    stream_callback(event_type, content, enhanced_metadata)
+            
             # Call AI model for exemption analysis
             analysis_result = self.ollama_client.analyze_exemptions(
                 model_name=self.model_name,
-                email_content=email_content
+                email_content=email_content,
+                stream_callback=wrapped_callback
             )
             
             if not analysis_result:
@@ -263,7 +291,7 @@ class CPRAAnalyzer:
                 if progress_callback:
                     progress_callback(i, len(emails), email)
                 
-                # Analyze individual email
+                # Analyze individual email (no streaming for batch mode currently)
                 analysis = self.analyze_email_exemptions(email, i)
                 
                 if analysis:

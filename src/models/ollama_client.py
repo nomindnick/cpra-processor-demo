@@ -103,7 +103,8 @@ class OllamaClient:
         prompt: str, 
         system_prompt: Optional[str] = None,
         temperature: float = 0.3,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        stream_callback: Optional[callable] = None
     ) -> Optional[str]:
         """
         Generate a response using the specified model with structured prompting.
@@ -114,6 +115,7 @@ class OllamaClient:
             system_prompt: Optional system prompt for context
             temperature: Sampling temperature (0.0 to 1.0)
             max_tokens: Maximum tokens to generate
+            stream_callback: Optional callback for streaming events
             
         Returns:
             Generated response text or None if failed
@@ -139,13 +141,34 @@ class OllamaClient:
                 'content': prompt
             })
             
-            response = self.client.chat(
-                model=model_name,
-                messages=messages,
-                options=options
-            )
-            
-            return response['message']['content'].strip()
+            # Check if we should stream the response
+            if stream_callback:
+                # Stream response chunks
+                response_text = ""
+                stream = self.client.chat(
+                    model=model_name,
+                    messages=messages,
+                    options=options,
+                    stream=True
+                )
+                
+                for chunk in stream:
+                    if 'message' in chunk and 'content' in chunk['message']:
+                        chunk_text = chunk['message']['content']
+                        response_text += chunk_text
+                        # Emit response chunk event
+                        stream_callback('response_chunk', chunk_text, {})
+                
+                return response_text.strip()
+            else:
+                # Non-streaming response
+                response = self.client.chat(
+                    model=model_name,
+                    messages=messages,
+                    options=options
+                )
+                
+                return response['message']['content'].strip()
             
         except Exception as e:
             self.logger.error(f"Failed to generate response with model {model_name}: {e}")
@@ -156,7 +179,8 @@ class OllamaClient:
         model_name: str, 
         email_content: str, 
         cpra_requests: List[str],
-        retry_attempts: int = 3
+        retry_attempts: int = 3,
+        stream_callback: Optional[callable] = None
     ) -> Optional[Dict]:
         """
         Analyze if an email is responsive to CPRA requests with enhanced prompting.
@@ -166,10 +190,20 @@ class OllamaClient:
             email_content: The email content to analyze
             cpra_requests: List of CPRA request strings
             retry_attempts: Number of retry attempts for failed requests
+            stream_callback: Optional callback for streaming events
             
         Returns:
             Dictionary with analysis results or None if failed
         """
+        # Validate inputs
+        if not cpra_requests:
+            self.logger.error("No CPRA requests provided for analysis")
+            return None
+        
+        if not email_content:
+            self.logger.error("No email content provided for analysis")
+            return None
+            
         system_prompt = f"""You are an expert legal assistant specializing in California Public Records Act (CPRA) requests. 
 Your task is to determine if an email document is responsive to specific CPRA requests.
 
@@ -220,17 +254,27 @@ EMAIL DOCUMENT TO ANALYZE:
 REMEMBER: Provide ONE assessment per CPRA request. Your JSON response must have exactly {len(cpra_requests)} element(s) in each array.
 Analyze the email as a WHOLE DOCUMENT, not paragraph by paragraph."""
         
+        # Emit prompt event if callback provided
+        if stream_callback:
+            stream_callback('system_prompt', system_prompt, {'model': model_name})
+            stream_callback('user_prompt', prompt, {'requests_count': len(cpra_requests)})
+        
         # Retry logic for better reliability
         for attempt in range(retry_attempts):
             json_content = ""
             response = ""
             try:
+                # Emit processing start event
+                if stream_callback:
+                    stream_callback('processing_start', None, {'attempt': attempt + 1})
+                
                 response = self.generate_structured_response(
                     model_name=model_name,
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=0.2,
-                    max_tokens=800
+                    max_tokens=800,
+                    stream_callback=stream_callback
                 )
                 
                 if not response:
@@ -253,6 +297,9 @@ Analyze the email as a WHOLE DOCUMENT, not paragraph by paragraph."""
                 
                 # Validate the response structure
                 if self._validate_responsiveness_result(result, len(cpra_requests)):
+                    # Emit complete event with result
+                    if stream_callback:
+                        stream_callback('response_complete', json.dumps(result, indent=2), {'model': model_name})
                     return result
                 else:
                     if attempt < retry_attempts - 1:
@@ -275,6 +322,8 @@ Analyze the email as a WHOLE DOCUMENT, not paragraph by paragraph."""
                 self.logger.error(f"Unexpected error in responsiveness analysis: {e}")
                 self.logger.debug(f"Raw response: {response}")
                 self.logger.debug(f"Extracted JSON: {json_content}")
+                import traceback
+                self.logger.debug(f"Traceback: {traceback.format_exc()}")
                 return None
         
         return None
@@ -372,7 +421,8 @@ Analyze the email as a WHOLE DOCUMENT, not paragraph by paragraph."""
         self, 
         model_name: str, 
         email_content: str,
-        retry_attempts: int = 3
+        retry_attempts: int = 3,
+        stream_callback: Optional[callable] = None
     ) -> Optional[Dict]:
         """
         Analyze an email for CPRA exemptions with enhanced prompting and retry logic.
@@ -381,6 +431,7 @@ Analyze the email as a WHOLE DOCUMENT, not paragraph by paragraph."""
             model_name: Model to use for analysis
             email_content: The email content to analyze
             retry_attempts: Number of retry attempts for failed requests
+            stream_callback: Optional callback for streaming events
             
         Returns:
             Dictionary with exemption analysis results or None if failed
@@ -431,17 +482,27 @@ EMAIL DOCUMENT TO ANALYZE:
 
 Provide your analysis in the required JSON format."""
         
+        # Emit prompt event if callback provided
+        if stream_callback:
+            stream_callback('system_prompt', system_prompt, {'model': model_name})
+            stream_callback('user_prompt', prompt, {'analysis_type': 'exemptions'})
+        
         # Retry logic for better reliability
         for attempt in range(retry_attempts):
             json_content = ""
             response = ""
             try:
+                # Emit processing start event
+                if stream_callback:
+                    stream_callback('processing_start', None, {'attempt': attempt + 1})
+                
                 response = self.generate_structured_response(
                     model_name=model_name,
                     prompt=prompt,
                     system_prompt=system_prompt,
                     temperature=0.2,
-                    max_tokens=800
+                    max_tokens=800,
+                    stream_callback=stream_callback
                 )
                 
                 if not response:
@@ -464,6 +525,9 @@ Provide your analysis in the required JSON format."""
                 
                 # Validate the response structure
                 if self._validate_exemption_result(result):
+                    # Emit complete event with result
+                    if stream_callback:
+                        stream_callback('response_complete', json.dumps(result, indent=2), {'model': model_name})
                     return result
                 else:
                     if attempt < retry_attempts - 1:

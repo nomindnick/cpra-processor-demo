@@ -45,6 +45,9 @@ from src.components.resource_monitor import (
     ResourceMonitor, create_performance_gauge,
     create_model_comparison_chart
 )
+from src.components.llm_stream_display import (
+    LLMStreamDisplay, StreamCallback, create_llm_stream_display
+)
 from src.styles.custom_styles import apply_custom_styling
 
 # Initialize configuration
@@ -94,6 +97,15 @@ def init_session_state():
         }
     if 'resource_monitor' not in st.session_state:
         st.session_state.resource_monitor = ResourceMonitor()
+    # LLM streaming display
+    if 'llm_display' not in st.session_state:
+        st.session_state.llm_display = None
+    if 'stream_callback' not in st.session_state:
+        st.session_state.stream_callback = None
+    if 'stream_events' not in st.session_state:
+        st.session_state.stream_events = []
+    if 'current_stream' not in st.session_state:
+        st.session_state.current_stream = {}
     # Error state
     if 'last_error' not in st.session_state:
         st.session_state.last_error = None
@@ -322,27 +334,186 @@ def processing_page():
         st.error("No emails or requests to process")
         return
     
-    # Check if processing is already complete
-    if st.session_state.processing_complete:
-        st.success("Processing already complete!")
-        st.info("Navigate to Results Dashboard or Document Review to view results.")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("View Results", type="primary", use_container_width=True):
-                st.session_state.page = 'results'
-                st.rerun()
-        with col2:
-            if st.button("Review Documents", use_container_width=True):
-                st.session_state.page = 'review'
-                st.rerun()
-        return
-    
-    # Get demo settings
+    # Get demo settings (moved up to be available throughout function)
     demo_mode = st.session_state.demo_mode
     demo_settings = st.session_state.demo_settings
     speed = demo_settings.get('speed', 1.0) if demo_mode else 1.0
     show_animations = demo_settings.get('animations', True) if demo_mode else False
     show_resources = demo_settings.get('resource_monitor', True) if demo_mode else False
+    
+    # Create tabs for demo mode FIRST (before checking if complete)
+    if demo_mode:
+        view_tabs = st.tabs(["Processing Status", "AI Stream View"])
+        
+        with view_tabs[0]:
+            # This is where the processing status will be shown
+            processing_status_container = st.container()
+            
+        with view_tabs[1]:
+            # AI stream view
+            st.markdown("### 🤖 AI Processing Stream")
+            st.info("This view shows the prompts sent to the AI and responses received during processing.")
+            
+            # Get stream events directly from session state
+            # This ensures we always get the current state
+            events_list = []
+            if 'stream_events' in st.session_state:
+                events_list = st.session_state.stream_events
+            
+            # Show event count and refresh button
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                if events_list:
+                    st.success(f"📊 **{len(events_list)} AI interactions captured**")
+                else:
+                    st.info("📊 **No AI interactions captured yet**")
+            with col2:
+                if st.button("🔄 Refresh", key="refresh_stream_view"):
+                    st.rerun()
+            
+            # Always show the events if they exist
+            if events_list and len(events_list) > 0:
+                # Educational callout about structured outputs
+                st.info("""
+                **💡 For the Audience:** Notice how the AI is instructed to respond with structured JSON format. 
+                This ensures consistent, parseable responses that can be automatically processed by the system.
+                The prompts include specific examples of the expected output format.
+                """)
+                
+                # Show last few events as simple list first
+                st.markdown("#### Recent Events (Simple View)")
+                for event in events_list[-5:]:
+                    content = event.get('content', '')
+                    content_len = len(content) if content else 0
+                    st.text(f"{event['type']}: {content_len} chars")
+                
+                # Find the most recent complete prompt/response pair
+                last_system_prompt = None
+                last_user_prompt = None
+                last_response = None
+                
+                for event in reversed(events_list):
+                    if event['type'] == 'response_complete' and not last_response:
+                        last_response = event
+                    elif event['type'] == 'user_prompt' and not last_user_prompt:
+                        last_user_prompt = event
+                    elif event['type'] == 'system_prompt' and not last_system_prompt:
+                        last_system_prompt = event
+                    
+                    if last_system_prompt and last_user_prompt and last_response:
+                        break
+                
+                # Display the last complete interaction
+                if last_system_prompt or last_user_prompt or last_response:
+                    st.markdown("---")
+                    st.markdown("### Last Complete AI Interaction")
+                    
+                    col1, col2 = st.columns([1, 1])
+                    
+                    with col1:
+                        st.markdown("#### 📤 Input to AI")
+                        if last_system_prompt:
+                            with st.expander("System Prompt (Instructions to AI)", expanded=True):
+                                # Show more of the system prompt, especially the structured output part
+                                content = last_system_prompt['content']
+                                
+                                # Try to show at least the structured output instructions
+                                if 'You must respond with valid JSON' in content:
+                                    # Find and highlight the JSON format section
+                                    json_start = content.find('You must respond with valid JSON')
+                                    if json_start > 0:
+                                        # Show context before and the full JSON instructions
+                                        display_start = max(0, json_start - 200)
+                                        display_content = content[display_start:min(len(content), json_start + 800)]
+                                        if display_start > 0:
+                                            display_content = "..." + display_content
+                                        if json_start + 800 < len(content):
+                                            display_content = display_content + "..."
+                                        st.code(display_content, language="text")
+                                        
+                                        # Add button to see full prompt
+                                        if len(content) > 1000:
+                                            with st.expander("View Complete System Prompt"):
+                                                st.code(content, language="text")
+                                    else:
+                                        # Fallback to showing first 1500 chars
+                                        st.code(content[:1500] + '...' if len(content) > 1500 else content, language="text")
+                                else:
+                                    # Show first 1500 characters
+                                    st.code(content[:1500] + '...' if len(content) > 1500 else content, language="text")
+                                    if len(content) > 1500:
+                                        with st.expander("View Complete System Prompt"):
+                                            st.code(content, language="text")
+                        
+                        if last_user_prompt:
+                            st.info(f"Email: {last_user_prompt['metadata'].get('email_subject', 'Unknown')}")
+                            with st.expander("User Prompt (Document to Analyze)", expanded=True):
+                                # Show more of the user prompt to see the CPRA request and email
+                                content = last_user_prompt['content']
+                                st.code(content[:1200] + '...' if len(content) > 1200 else content, language="text")
+                                
+                                # Add button to see complete prompt if truncated
+                                if len(content) > 1200:
+                                    with st.expander("View Complete User Prompt"):
+                                        st.code(content, language="text")
+                    
+                    with col2:
+                        st.markdown("#### 📥 AI Response")
+                        if last_response:
+                            try:
+                                response_json = json.loads(last_response['content'])
+                                st.json(response_json)
+                            except:
+                                st.code(last_response['content'][:500] + '...' if len(last_response['content']) > 500 else last_response['content'])
+                
+                # Show full event log
+                with st.expander("Full Event Log"):
+                    for i, event in enumerate(events_list):
+                        content = event.get('content', '')
+                        content_len = len(content) if content else 0
+                        st.text(f"{i+1}. {event['type']} - {content_len} chars - {event.get('timestamp', 'no time')}")
+            else:
+                st.warning("No AI processing data yet. Start processing emails to see the AI prompts and responses.")
+                st.info("Make sure Demo Mode is enabled BEFORE starting processing.")
+    
+    # Check if processing is already complete
+    if st.session_state.processing_complete:
+        # Show in the processing status container if in demo mode
+        if demo_mode:
+            with processing_status_container:
+                st.success("Processing already complete!")
+                st.info("Navigate to Results Dashboard or Document Review to view results.")
+                
+                # Debug: Show if we have stream events
+                events_count = len(st.session_state.get('stream_events', []))
+                st.info(f"Debug: {events_count} stream events captured")
+                if events_count > 0:
+                    st.success("✅ Stream events are available in the AI Stream View tab above!")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("View Results", type="primary", use_container_width=True):
+                        st.session_state.page = 'results'
+                        st.rerun()
+                with col2:
+                    if st.button("Review Documents", use_container_width=True):
+                        st.session_state.page = 'review'
+                        st.rerun()
+        else:
+            # Non-demo mode
+            st.success("Processing already complete!")
+            st.info("Navigate to Results Dashboard or Document Review to view results.")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("View Results", type="primary", use_container_width=True):
+                    st.session_state.page = 'results'
+                    st.rerun()
+            with col2:
+                if st.button("Review Documents", use_container_width=True):
+                    st.session_state.page = 'review'
+                    st.rerun()
+        return
     
     # Processing phases
     phases = [
@@ -357,18 +528,20 @@ def processing_page():
         resource_container = st.container()
         st.markdown("---")
     
-    # Model activity indicator
+    # Create containers for processing display
     if demo_mode:
-        model_container = st.container()
-        
-    progress_container = st.container()
-    stats_container = st.container()
-    
-    if demo_mode:
-        # Enhanced visual layout for demo
-        current_doc_container = st.container()
-    
-    log_container = st.container()
+        # In demo mode, tabs are already created above
+        # Just need to create containers in the processing status tab
+        with processing_status_container:
+            progress_container = st.container()
+            stats_container = st.container()
+            current_doc_container = st.container()
+            log_container = st.container()
+    else:
+        # Non-demo mode - standard layout
+        progress_container = st.container()
+        stats_container = st.container()
+        log_container = st.container()
     
     # Initialize resource monitor if needed
     if demo_mode and show_resources:
@@ -439,6 +612,34 @@ def processing_page():
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Starting responsiveness analysis...")
     log_area.text_area("Processing Log", "\n".join(logs), height=200)
     
+    # Prepare streaming callback if in demo mode (defined once for the whole loop)
+    stream_cb = None
+    if demo_mode:
+        # Initialize stream events list if needed
+        if 'stream_events' not in st.session_state:
+            st.session_state.stream_events = []
+            
+        # Debug: log current state
+        logger.info(f"Demo mode active, current stream_events count: {len(st.session_state.stream_events)}")
+        
+        # Create callback function that stores events
+        def stream_cb(event_type, content, metadata):
+            # Ensure stream_events exists
+            if 'stream_events' not in st.session_state:
+                st.session_state.stream_events = []
+                
+            # Store events for display after processing
+            event = {
+                'type': event_type,
+                'content': content,
+                'metadata': metadata if metadata else {},
+                'timestamp': datetime.now()
+            }
+            st.session_state.stream_events.append(event)
+            
+            # Debug logging
+            logger.info(f"Stream event captured: {event_type}, content_length: {len(content) if content else 0}, total_events: {len(st.session_state.stream_events)}")
+    
     responsiveness_results = []
     for i, email in enumerate(st.session_state.emails):
         if demo_mode:
@@ -461,9 +662,14 @@ def processing_page():
         
         # Analyze responsiveness with error handling
         try:
+            # Debug: log if callback is being passed
+            logger.info(f"Analyzing email {i+1}, stream_cb is {'set' if stream_cb else 'None'}")
+            
             result = analyzer.analyze_email_responsiveness(
                 email, 
-                st.session_state.cpra_requests
+                st.session_state.cpra_requests,
+                email_index=i,
+                stream_callback=stream_cb
             )
             responsiveness_results.append(result)
         except Exception as e:
@@ -545,7 +751,11 @@ def processing_page():
                 simulate_processing_delay(demo_mode, base_delay=0.8, speed_multiplier=speed)
             
             try:
-                result = analyzer.analyze_email_exemptions(email)
+                result = analyzer.analyze_email_exemptions(
+                    email,
+                    email_index=i,
+                    stream_callback=stream_cb if demo_mode and st.session_state.stream_callback else None
+                )
                 exemption_results.append(result)
             except Exception as e:
                 logger.error(f"Error analyzing exemptions for email {i+1}: {e}")
@@ -555,7 +765,8 @@ def processing_page():
             
             if demo_mode:
                 if result and result.has_any_exemption():
-                    ai_activity.warning(f" Found {len(result.exemptions)} exemption(s)")
+                    num_exemptions = len(result.get_applicable_exemptions())
+                    ai_activity.warning(f" Found {num_exemptions} exemption(s)")
                 else:
                     ai_activity.success(" No exemptions found")
                 simulate_processing_delay(demo_mode, base_delay=0.2, speed_multiplier=speed)
