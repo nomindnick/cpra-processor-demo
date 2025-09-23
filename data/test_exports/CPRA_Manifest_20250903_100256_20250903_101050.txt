@@ -1,0 +1,20 @@
+CPRA EXPORT MANIFEST
+==================================================
+
+Session ID: 20250903_100256
+Export Date: 2025-09-03 10:10:50
+Total Documents: 10
+Produced Documents: 4
+Withheld Documents: 6
+
+EXPORTED FILES:
+------------------------------
+production_pdf: CPRA_Production_20250903_100256_20250903_101050.pdf
+privilege_log: CPRA_PrivilegeLog_20250903_100256_20250903_101050.csv
+summary_report: CPRA_Summary_20250903_100256_20250903_101050.pdf
+
+CPRA REQUESTS:
+------------------------------
+1. All documents, emails, and communications regarding roof leaks, water damage, or water intrusion issues at the Riverside Community Center construction project from January 1, 2024 to present.
+
+END OF MANIFEST

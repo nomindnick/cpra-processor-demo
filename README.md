@@ -55,7 +55,7 @@ ollama pull phi4-mini-reasoning:3.8b  # Reasoning capabilities, 3.2GB
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/cpra-processor-demo.git
+git clone https://github.com/nomindnick/cpra-processor-demo.git
 cd cpra-processor-demo
 
 # Create virtual environment
@@ -326,7 +326,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/cpra-processor-demo.git
+git clone https://github.com/nomindnick/cpra-processor-demo.git
 cd cpra-processor-demo
 
 # Create development branch
