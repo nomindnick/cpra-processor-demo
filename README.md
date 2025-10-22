@@ -7,6 +7,26 @@ A demonstration tool for processing California Public Records Act (CPRA) request
 ![Ollama](https://img.shields.io/badge/ollama-required-green)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
+---
+
+## ⚠️ IMPORTANT: Educational Demonstration Only
+
+**THIS APPLICATION IS NOT INTENDED FOR PRODUCTION USE AND WILL FAIL IN REAL CPRA PROCESSING.**
+
+This is an educational demonstration built to illustrate the accessibility of local AI models for public agencies. Key limitations:
+
+- ⚠️ **Will produce inaccurate results** on real CPRA requests beyond the simplified synthetic test data
+- ⚠️ **Not legal advice** - This tool does not provide legal guidance or replace legal counsel
+- ⚠️ **Requires legal review** - All determinations must be reviewed by qualified legal professionals
+- ⚠️ **Simplified workflow** - Real CPRA processing involves far more complexity than this demo addresses
+- ⚠️ **Small model limitations** - Responsiveness and exemption determinations are inherently subjective and beyond the capability of these models to accurately assess in production scenarios
+
+**The demo uses synthetic emails specifically designed to produce obvious results.** Do not use this application for actual CPRA compliance - consult with legal counsel for production needs.
+
+See [LICENSE](LICENSE) for complete legal disclaimers.
+
+---
+
 ## 🎯 Project Overview
 
 This application demonstrates how public agencies can leverage open-source large language models to process CPRA requests while maintaining complete data privacy. Built for the California Special District's Association presentation, it showcases a complete workflow from email ingestion through document review and export—all running locally without any cloud dependencies.
@@ -352,7 +372,33 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file for
 
 ## ⚠️ Disclaimer
 
-This is a demonstration application built for educational purposes. While it showcases the potential for privacy-preserving document processing, please consult with your legal team before using in production environments. The AI determinations should always be reviewed by qualified personnel for accuracy and legal compliance.
+**NOT FOR PRODUCTION USE - EDUCATIONAL DEMONSTRATION ONLY**
+
+This is a demonstration application built SOLELY for educational purposes to illustrate the accessibility of local AI technology for public agencies. It is NOT intended for actual CPRA processing and WILL FAIL in production environments.
+
+### Critical Limitations
+
+This application has fundamental limitations that make it unsuitable for real-world use:
+
+1. **Accuracy Issues**: The AI will produce inaccurate determinations on real CPRA requests. The demo uses synthetic data specifically designed to be obvious - real requests are far more complex.
+
+2. **Model Limitations**: Small language models like gemma3 cannot accurately assess the inherently subjective determinations of document responsiveness and exemption applicability that real CPRA processing requires.
+
+3. **Workflow Oversimplification**: The two-pass analysis approach is simultaneously too simple for production accuracy and wasteful (analyzing non-responsive documents for exemptions).
+
+4. **Not Legal Advice**: This tool does NOT provide legal advice. All output requires review by qualified legal professionals familiar with CPRA requirements.
+
+5. **No Warranty**: The software is provided "AS IS" without warranty of any kind. See [LICENSE](LICENSE) for complete terms.
+
+### Before Any Use
+
+Users are STRONGLY ADVISED to:
+- Consult with legal counsel before any official capacity use
+- NOT rely on this software for actual CPRA compliance
+- Thoroughly test and validate any adapted code
+- Understand this is a technology demonstration, not a legal compliance tool
+
+**The goal of this project is to inspire thinking about local AI possibilities, not to provide a production-ready CPRA solution.**
 
 ## 📞 Support
 

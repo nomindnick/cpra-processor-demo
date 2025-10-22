@@ -24,17 +24,31 @@ SOFTWARE.
 
 ADDITIONAL DISCLAIMER FOR GOVERNMENT USE:
 
-This software is provided as a demonstration and educational tool. While it
-showcases potential capabilities for processing public records requests, any
-production use should be thoroughly tested and validated to ensure compliance
-with applicable laws and regulations, including but not limited to:
+⚠️ NOT FOR PRODUCTION USE - EDUCATIONAL DEMONSTRATION ONLY ⚠️
 
-- California Public Records Act (CPRA)
-- Local government transparency requirements
-- Data privacy and security regulations
-- Records retention policies
+This software is provided SOLELY as a demonstration and educational tool to
+illustrate the potential of local AI processing. It is NOT intended for actual
+CPRA processing and WILL FAIL in production environments.
 
-Users are strongly advised to consult with legal counsel before implementing
-this software in any official capacity. The authors and contributors make no
-representations about the suitability of this software for any particular
-government use case.
+IMPORTANT LIMITATIONS:
+- This application WILL produce inaccurate results in real-world scenarios
+- AI determinations of responsiveness and exemptions are inherently subjective
+  and beyond the capability of small language models to accurately assess
+- The simplified two-pass workflow is insufficient for production accuracy
+- This tool is NOT INTENDED TO PROVIDE LEGAL ADVICE
+- Human review by qualified legal professionals is MANDATORY
+
+Users are STRONGLY ADVISED to:
+- Consult with legal counsel before any official use
+- NOT rely on this software for actual CPRA compliance
+- Thoroughly test and validate any adapted code
+- Understand applicable laws and regulations including:
+  * California Public Records Act (CPRA)
+  * Local government transparency requirements
+  * Data privacy and security regulations
+  * Records retention policies
+
+The authors and contributors make NO representations about the suitability of
+this software for any particular government use case. This demonstration uses
+synthetic data specifically designed to produce obvious results - real CPRA
+requests involve far more complexity than this tool can handle.
